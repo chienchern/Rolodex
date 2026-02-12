@@ -12,13 +12,11 @@
   - [Automated Reminders](#4-automated-reminders-sms)
   - [Onboarding / Setup](#5-onboarding--setup)
 - [User Workflows](#user-workflows)
-- [Technical Requirements](#technical-requirements)
 - [MVP Scope](#mvp-scope-whats-included)
 - [Out of Scope for MVP](#out-of-scope-for-mvp)
 - [Success Metrics](#success-metrics)
 - [Known Limitations](#known-limitations)
 - [Open Questions / Future Considerations](#open-questions--future-considerations)
-- [Next Steps](#next-steps)
 
 ## Overview
 A relationship management system that helps track contacts, conversation history, and proactively reminds the user when to reach out to people they want to build relationships with.
@@ -73,6 +71,7 @@ Users can text the system using natural language for:
   - Overwrites Last Contact Notes on the Contacts tab
   - If timing specified ("follow up in 3 weeks"), sets reminder date accordingly and confirms with the precise day and date: "Updated John. Next reminder set for Monday, Mar 2, 2026."
   - If timing NOT specified, sets reminder date using the default interval (configurable per user in Settings tab, default: 2 weeks) and confirms with the precise day and date: "Updated John. I'll remind you to reach out on Monday, Feb 23, 2026."
+  - If the system cannot parse a timing expression, it responds: "I couldn't understand that timing. Could you try again? (e.g., 'in 2 weeks', 'in 3 days')"
 
 **B. Custom Reminder**
 - Example: "Remind me about Sarah in 2 weeks"
@@ -185,44 +184,6 @@ Users are pre-provisioned: an admin creates each user's personal spreadsheet (wi
 
 ---
 
-## Technical Requirements
-
-### SMS Service
-- Receive inbound SMS from user
-- Send outbound SMS for reminders and confirmations
-- Handle natural language parsing of user messages
-- SMS compliance keywords (STOP/START/HELP) are handled automatically by Twilio at the platform level
-
-### Google Sheets Integration
-- Read/write access to designated Google Sheet (Sheet ID configured as environment variable)
-- Three-tab structure: Contacts tab + Logs tab + Settings tab
-- Google Sheets is the source of truth — no separate database
-- **Read strategy:**
-  - **Inbound SMS:** Read sheet on-demand when a user message is received (low volume, real-time read is fine)
-  - **Outbound reminders:** Daily cron job at 9am EST fetches the sheet once per day and sends all due reminders
-- **Concurrency:** Google Sheets API has rate limits and no native row-level locking. If multiple SMS arrive in rapid succession, a naive implementation may cause race conditions or data overwrites. The backend must process sheet writes sequentially (e.g., via a simple message queue, or by using Google Apps Script as the webhook receiver, which handles sheet locking natively).
-
-### Natural Language Processing
-- Parse user SMS to extract:
-  - Contact name
-  - Interaction notes/content
-  - Timing instructions (if specified)
-  - Intent (log interaction, query, set reminder, archive)
-- **Date parsing:** The LLM should attempt to interpret all timing expressions, including ambiguous ones like "next Tuesday" or "in a couple weeks." If the LLM can resolve the expression to a specific date, confirm it to the user: "Reminder set for March 3 (Monday)." If the LLM cannot confidently parse the expression, respond: "I couldn't understand that timing. Could you try again? (e.g., 'in 2 weeks', 'in 3 days')"
-
-### Scheduling/Reminder System
-- Track reminder dates for all Active contacts
-- Send SMS reminders at appropriate intervals (1 week before + day of, or day of only for short intervals)
-- Daily cron job at 9am EST to fetch and send reminders
-- Handle time zones for computing "today" per user (per-user timezone from Settings tab)
-
-### Contact Matching
-- Match mentioned names to Name column in Contacts tab (Active contacts only)
-- Handle ambiguity (multiple contacts with same first name)
-- Fuzzy matching for typo detection on new contact creation
-
----
-
 ## MVP Scope (What's Included)
 
 - ✅ SMS logging of interactions (natural language)
@@ -284,12 +245,3 @@ Users are pre-provisioned: an admin creates each user's personal spreadsheet (wi
 3. Should contacts have multiple phone numbers? (Currently: one per contact)
 4. If a user manually deletes a row from the Contacts tab (rather than archiving via SMS) and later texts about that person again, should the system treat them as a brand new contact? (For MVP: yes, treat as new. The orphaned Logs rows remain but are not linked.)
 
----
-
-## Next Steps
-
-1. Review and finalize this PRD
-2. Technical design: Choose SMS provider (Twilio?), backend architecture, NLP approach
-3. Set up Google Sheet template structure (Contacts tab + Logs tab + Settings tab)
-4. Build MVP implementation
-5. Test with real contacts and iterate
