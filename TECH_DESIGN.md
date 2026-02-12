@@ -1,5 +1,29 @@
 # Rolodex MVP - Technical Design
 
+## Table of Contents
+
+- [Context](#context)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Key Design Decisions](#key-design-decisions-with-rationale)
+- [Flask App Routes](#flask-app-routes)
+  - [POST /sms-webhook](#post-sms-webhook--inbound-sms-handler)
+  - [POST /reminder-cron](#post-reminder-cron--daily-reminder-job)
+- [Google Sheets Schema](#google-sheets-schema)
+  - [Users tab](#users-tab-in-a-shared-master-spreadsheet)
+  - [Contacts tab](#contacts-tab-per-user-spreadsheet)
+  - [Logs tab](#logs-tab-per-user-spreadsheet)
+  - [Settings tab](#settings-tab-per-user-spreadsheet)
+- [NLP Design (Gemini)](#nlp-design-gemini)
+- [Pending Messages (Firestore)](#pending-messages-firestore)
+- [Multi-turn Context (Firestore)](#multi-turn-context-firestore)
+- [Idempotency (Firestore)](#idempotency-firestore)
+- [Project Structure](#project-structure)
+- [Key Dependencies](#key-dependencies-requirementstxt)
+- [Environment Variables](#environment-variables-cloud-run)
+- [Setup Steps](#setup-steps)
+- [Verification / Testing Plan](#verification--testing-plan)
+
 ## Context
 Rolodex is an SMS-based personal CRM. Users text the system to log interactions, query contact history, set custom reminders, and receive automated follow-up reminders. Google Sheets is the data store. Supports 2-3 users, each with their own spreadsheet.
 
