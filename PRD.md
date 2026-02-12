@@ -42,22 +42,20 @@ The Google Sheet uses a three-tab structure:
 
 **Contacts Tab** (one row per contact):
 - **Name**: Contact's full name (primary lookup key for SMS matching)
-- **Phone Number**: Contact's phone number (informational; not used for matching)
 - **Last Contact Date**: When you last interacted with them
-- **Next Contact Date**: When you should reach out next
-- **Latest Notes**: Most recent interaction notes (overwrite field — replaced only when a new interaction is logged via SMS Command A. Stores the raw SMS text; if over 280 characters, the system summarizes via LLM before storing. Acts as a "quick glance" snapshot. Full history lives in the Logs tab.)
+- **Reminder Date**: When the system will remind you to reach out. Set explicitly ("follow up in 3 weeks") or auto-computed as last contact date + default reminder interval. Empty means no pending reminder.
+- **Last Contact Notes**: Most recent interaction notes (overwrite field — replaced only when a new interaction is logged via SMS Command A. Acts as a "quick glance" snapshot. Full history lives in the Logs tab.)
 - **Status**: Active or Archived (default: Active). Only Active contacts appear in search results and receive reminders.
 
 **Logs Tab** (one row per interaction):
-- **Date**: When the interaction occurred
-- **Name**: Contact name
-- **Note**: What was discussed
+- Stores date, contact name, and notes for each interaction
+- Full schema defined in tech design
 
 **Settings Tab** (key-value configuration):
 - **Timezone**: User's timezone in IANA format (e.g., `America/New_York`)
-- **User Phone**: User's phone number (e.g., `+15550000000`)
+- **Default Reminder Days**: Default follow-up interval in days (default: 14)
 
-The Settings Tab keeps the Google Sheet self-contained as both database and configuration, making the backend stateless. The backend only needs the Sheet ID (configured as an environment variable) to operate.
+Each user has their own spreadsheet. A master spreadsheet maps user phone numbers to their personal spreadsheets, keeping the backend stateless.
 
 ### 2. SMS Commands (Natural Language Processing)
 
@@ -72,14 +70,14 @@ Users can text the system using natural language for:
   - If multiple people mentioned, updates all known contacts first, then enters the confirmation flow for any unknown names (does not hold the entire command)
   - Updates last contact date to today
   - Appends a new row to the Logs tab with timestamp and note
-  - Overwrites Latest Notes on the Contacts tab (raw SMS text, or LLM summary if over 280 characters)
-  - If timing specified ("follow up in 3 weeks"), sets next contact date accordingly and confirms with the precise day and date: "Updated John. Next reminder set for Monday, Mar 2, 2026."
-  - If timing NOT specified, defaults to 2 weeks and confirms with the precise day and date: "Updated John. I'll remind you to reach out on Monday, Feb 23, 2026."
+  - Overwrites Last Contact Notes on the Contacts tab
+  - If timing specified ("follow up in 3 weeks"), sets reminder date accordingly and confirms with the precise day and date: "Updated John. Next reminder set for Monday, Mar 2, 2026."
+  - If timing NOT specified, sets reminder date using the default interval (configurable per user in Settings tab, default: 2 weeks) and confirms with the precise day and date: "Updated John. I'll remind you to reach out on Monday, Feb 23, 2026."
 
 **B. Custom Reminder**
 - Example: "Remind me about Sarah in 2 weeks"
 - System behavior:
-  - Updates next contact date to specified time
+  - Updates reminder date to specified time
   - Confirms via SMS with the precise day and date: "Reminder set for Sarah on Monday, Feb 23, 2026."
 
 **C. Query Last Contact**
@@ -118,23 +116,22 @@ Users can text the system using natural language for:
   2. If no similar names exist, ask for confirmation: "I don't have 'Alex' in your Rolodex. Want me to add them? Reply YES to confirm."
   3. If confirmed, create new row in Contacts tab with Status = Active
   4. Populate name from SMS
-  5. Phone number field left blank (user can add manually in sheet)
-  6. Set last contact date to today
-  7. Set default next contact date to 2 weeks
+  5. Set last contact date to today
+  6. Set reminder date using default interval
   8. Confirm to user: "Added [Name] to your rolodex. I'll remind you to follow up on [Day], [Date]." (e.g., "Added Alex to your rolodex. I'll remind you to follow up on Monday, Feb 23, 2026.")
 
 ### 4. Automated Reminders (SMS)
 
 **Reminder Cadence:**
-- **If next contact date is > 7 days away:** Send two reminders:
+- **If reminder date is > 7 days away:** Send two reminders:
   - **1 week before**: "Reminder: Reach out to John in 1 week (last spoke about startup funding)"
   - **Day of**: "Today: Reach out to John (last spoke on Jan 15, 2026 about startup funding)"
-- **If next contact date is ≤ 7 days away:** Send one reminder:
+- **If reminder date is ≤ 7 days away:** Send one reminder:
   - **Day of** only: "Today: Reach out to John (last spoke on Jan 15 about startup funding)"
 - Reminders are only sent for Active contacts.
 
 **Reminder Timing:**
-- All reminders sent at 9am in user's local timezone (read from Settings tab)
+- Reminders sent daily at 9am EST
 
 **Reminder Content:**
 - Contact name
@@ -144,12 +141,7 @@ Users can text the system using natural language for:
 
 ### 5. Onboarding / Setup
 
-When a new user first texts the system:
-1. System infers timezone from the user's phone number area code
-2. System sends a confirmation: "Welcome to Rolodex! Based on your number, it looks like you're in New York (EST). Is that right?"
-3. User can confirm or correct (e.g., "No, I'm in LA")
-4. System writes the confirmed timezone and user phone number to the Settings tab
-5. System confirms: "Got it, set to Pacific Time. You're all set! Text me after your next meeting to get started."
+Users are pre-provisioned: an admin creates each user's personal spreadsheet (with Contacts, Logs, and Settings tabs) and adds their phone number and spreadsheet ID to the master Users tab. No self-service onboarding for MVP.
 
 ---
 
@@ -159,7 +151,7 @@ When a new user first texts the system:
 1. User has coffee with John
 2. User texts: "Had coffee with John today, talked about his new startup idea"
 3. System parses message, matches "John" against Active contacts in the Name column
-4. System updates Contacts tab (last contact date, overwrites latest notes) and adds a row to Logs tab
+4. System updates Contacts tab (last contact date, overwrites last contact notes) and adds a row to Logs tab
 5. System responds: "Updated John. I'll remind you to reach out on Monday, Feb 23, 2026."
 
 ### Workflow 2: Query Contact History
@@ -170,7 +162,7 @@ When a new user first texts the system:
 ### Workflow 3: Custom Follow-up Timing
 1. User texts: "Met with Alex, discussed partnership, follow up in 1 month"
 2. System parses timing instruction
-3. System updates Contacts tab (last contact date, latest notes) and Logs tab; sets next contact date to 1 month from today
+3. System updates Contacts tab (last contact date, last contact notes) and Logs tab; sets reminder date to 1 month from today
 4. System responds: "Updated Alex. Next reminder set for Monday, Mar 9, 2026."
 
 ### Workflow 4: Receive & Act on Reminder
@@ -180,10 +172,10 @@ When a new user first texts the system:
 
 ### Workflow 5: View/Edit Data Directly
 1. User opens Google Sheet on laptop
-2. Reviews Contacts tab — can sort by next contact date, filter by name, etc.
+2. Reviews Contacts tab — can sort by reminder date, filter by name, etc.
 3. Reviews Logs tab for full interaction history
 4. Manually edits notes or adjusts timing for specific contacts
-5. Changes take effect on the next system read (inbound SMS or next daily cron run)
+5. Changes take effect on the next system read (inbound SMS or next daily cron run at 9am EST)
 
 ### Workflow 6: Archive
 1. User texts: "Remove John from my rolodex"
@@ -199,7 +191,7 @@ When a new user first texts the system:
 - Receive inbound SMS from user
 - Send outbound SMS for reminders and confirmations
 - Handle natural language parsing of user messages
-- Handle standard SMS compliance keywords: STOP (unsubscribe from all messages), START/UNSTOP (resubscribe), HELP (return support info). Required by TCPA/CTIA guidelines — SMS providers like Twilio enforce this and may suspend numbers that don't comply.
+- SMS compliance keywords (STOP/START/HELP) are handled automatically by Twilio at the platform level
 
 ### Google Sheets Integration
 - Read/write access to designated Google Sheet (Sheet ID configured as environment variable)
@@ -207,7 +199,7 @@ When a new user first texts the system:
 - Google Sheets is the source of truth — no separate database
 - **Read strategy:**
   - **Inbound SMS:** Read sheet on-demand when a user message is received (low volume, real-time read is fine)
-  - **Outbound reminders:** Daily cron job fetches the sheet once per day, identifies all reminders due in the next 24 hours, and queues them for delivery at 9am local time
+  - **Outbound reminders:** Daily cron job at 9am EST fetches the sheet once per day and sends all due reminders
 - **Concurrency:** Google Sheets API has rate limits and no native row-level locking. If multiple SMS arrive in rapid succession, a naive implementation may cause race conditions or data overwrites. The backend must process sheet writes sequentially (e.g., via a simple message queue, or by using Google Apps Script as the webhook receiver, which handles sheet locking natively).
 
 ### Natural Language Processing
@@ -219,10 +211,10 @@ When a new user first texts the system:
 - **Date parsing:** The LLM should attempt to interpret all timing expressions, including ambiguous ones like "next Tuesday" or "in a couple weeks." If the LLM can resolve the expression to a specific date, confirm it to the user: "Reminder set for March 3 (Monday)." If the LLM cannot confidently parse the expression, respond: "I couldn't understand that timing. Could you try again? (e.g., 'in 2 weeks', 'in 3 days')"
 
 ### Scheduling/Reminder System
-- Track next contact dates for all Active contacts
+- Track reminder dates for all Active contacts
 - Send SMS reminders at appropriate intervals (1 week before + day of, or day of only for short intervals)
-- Daily cron job to fetch and queue reminders
-- Handle time zones appropriately (per-user timezone from Settings tab)
+- Daily cron job at 9am EST to fetch and send reminders
+- Handle time zones for computing "today" per user (per-user timezone from Settings tab)
 
 ### Contact Matching
 - Match mentioned names to Name column in Contacts tab (Active contacts only)
@@ -238,7 +230,7 @@ When a new user first texts the system:
 - ✅ Automated reminders (1 week before + day of, with smart short-interval handling)
 - ✅ Query last contact via SMS
 - ✅ New contact creation with confirmation (fuzzy match to prevent typo duplicates)
-- ✅ Default 2-week follow-up interval
+- ✅ Configurable default follow-up interval (default: 2 weeks, per-user setting)
 - ✅ Custom follow-up timing via SMS (LLM-powered date parsing with confirmation)
 - ✅ Full interaction history in Logs tab
 - ✅ Group meeting logging (multiple people in one message)
@@ -246,9 +238,9 @@ When a new user first texts the system:
 - ✅ Missing name handling (system asks for clarification)
 - ✅ Name disambiguation for duplicate first names (full name or nickname)
 - ✅ Multi-turn context retention for clarification flows
-- ✅ Scheduled reminders at 9am local time
-- ✅ Onboarding flow with infer-and-confirm timezone setup
-- ✅ SMS compliance (STOP/START/HELP keywords)
+- ✅ Multiple independent users (2-3), each with their own spreadsheet
+- ✅ Scheduled reminders daily at 9am EST
+- ✅ Pre-provisioned user setup (admin creates spreadsheet, adds to master Users tab)
 
 ## Out of Scope for MVP
 
@@ -260,7 +252,7 @@ When a new user first texts the system:
 - ❌ Analytics/relationship insights
 - ❌ Group chat / threading (system does not facilitate conversations between multiple parties)
 - ❌ Email interface (SMS only)
-- ❌ Multi-user/sharing
+- ❌ Shared contacts between users (each user has independent data)
 - ❌ Mobile app (SMS is the interface)
 - ❌ Undo command (NLP misparses are corrected manually in the Google Sheet)
 
@@ -279,7 +271,7 @@ When a new user first texts the system:
 
 - **Weekend/holiday scheduling:** If a follow-up date falls on a weekend or holiday, the system does not automatically adjust to the next business day. Reminders are sent on the exact calculated date.
 - **Name-based matching only:** Contacts are matched by name, not by any unique ID. Unusual or very common names may occasionally require disambiguation.
-- **Manual sheet edits and reminders:** The reminder cron job runs once daily. If a user manually changes a Next Contact Date in the sheet to "today" after the cron has already run, that reminder will not fire until the next day's cron run. Edits should be made before 9am local time to take effect same-day.
+- **Manual sheet edits and reminders:** The reminder cron job runs once daily at 9am EST. If a user manually changes a Reminder Date in the sheet to "today" after the cron has already run, that reminder will not fire until the next day's cron run. Edits should be made before 9am EST to take effect same-day.
 - **No undo command:** If the NLP misparses a message (e.g., updates "Robert" instead of "Robbie"), the user must correct it manually in the Google Sheet. There is no SMS-based undo for MVP.
 - **No SMS-based reactivation of archived contacts:** Once a contact is archived, mentioning their name again creates a new contact rather than reactivating the archived one. To reactivate, the user must manually change the Status back to "Active" in Google Sheets.
 

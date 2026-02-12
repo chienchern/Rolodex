@@ -102,7 +102,7 @@ Messages are batched to handle multi-message sequences (e.g., user sends 3 texts
    e. Send reminder SMS to the user's phone number via Twilio
 4. Return 200 OK
 
-**Cloud Scheduler config:** `0 9 * * *` in UTC. The job iterates over users and computes "today" per-user using their timezone setting.
+**Cloud Scheduler config:** `0 14 * * *` in UTC (9am EST). The job iterates over users and computes "today" per-user using their timezone setting.
 
 ## Google Sheets Schema
 
@@ -240,7 +240,7 @@ google-genai
 3. **Google Sheets:** Create a master spreadsheet with a Users tab. For each user, create a personal spreadsheet with Contacts, Logs, Settings tabs. Share all sheets with the service account email
 4. **Twilio:** Create account, buy phone number, configure webhook URL to Cloud Run `/sms-webhook`. Configure a **Fallback URL** for resilience (Twilio has minimal retry behavior on inbound SMS webhooks)
 5. **Deploy:** `gcloud run deploy rolodex-mvp --source . --region us-central1 --allow-unauthenticated --set-env-vars "..."`
-6. **Cloud Scheduler:** Create job: `0 9 * * *` in UTC, targeting Cloud Run `/reminder-cron` endpoint with OIDC auth (create a scheduler service account with `roles/run.invoker`). The app handles per-user timezone logic internally
+6. **Cloud Scheduler:** Create job: `0 14 * * *` in UTC (9am EST), targeting Cloud Run `/reminder-cron` endpoint with OIDC auth (create a scheduler service account with `roles/run.invoker`). The app handles per-user timezone logic internally
 7. **Test:** Send real SMS end-to-end
 
 ## Verification / Testing Plan
