@@ -142,7 +142,7 @@ No manual SMS needed. E2E tests POST to the deployed webhook with computed Twili
 
 | Tool | When |
 |------|------|
-| **Agent teams** | Phases 2+3+4 (3 teammates), Phases 5+6 (2 teammates). Each teammate owns separate files, no conflicts. Lead coordinates via shared task list. |
+| **Agent teams** | Be sure to use [agent teams](https://code.claude.com/docs/en/agent-teams), NOT sub-agents. Phases 2+3+4 (3 teammates), Phases 5+6 (2 teammates). Each teammate owns separate files, no conflicts. Lead coordinates via shared task list. |
 | **Lead (direct)** | Phases 0+1 (foundation), Phase 7 (Flask app), all of Blocks B+C (deployment + verification) |
 | **Context7 MCP** | Teammates look up gspread, google-genai, Twilio SDK docs during implementation |
 | **Sub-agents (Explore)** | Quick research if anyone hits an unexpected issue |

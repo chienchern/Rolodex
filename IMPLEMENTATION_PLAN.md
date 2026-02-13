@@ -26,36 +26,6 @@
 
 The Rolodex MVP is an SMS-based personal CRM: users text a Twilio number, a Flask app on Cloud Run parses intent via Gemini, and Google Sheets stores contact data. Firestore handles ephemeral state (message batching, multi-turn context, idempotency). Cloud Scheduler triggers daily reminders. The PRD and tech design are complete and well-aligned — no code exists yet.
 
----
-
-## Leveraging Claude Code for This Build
-
-The user wants to understand how to use Claude Code's capabilities effectively. Here's what's relevant for this project:
-
-**Sub-agents (Task tool)** — Claude can spawn specialized child agents that work independently and return results. Types available:
-- **Explore** — searches/reads code to answer questions about the codebase
-- **Plan** — designs implementation approaches
-- **Bash** — runs shell commands
-- **general-purpose** — handles complex multi-step tasks with all tools
-
-For this build, sub-agents are useful for: parallelizing independent module implementation, researching API documentation (gspread, Twilio, google-genai), and running tests.
-
-**Agent teams / parallel agents** — Multiple sub-agents can be launched simultaneously in one message. For example, `sheets_client.py`, `context.py`, and `nlp.py` have no dependencies on each other, so all three could be built in parallel by separate agents.
-
-**Skills** — Slash commands like `/commit` that trigger specialized workflows. The `/commit` skill is useful after each phase to checkpoint progress.
-
-**MCP (Model Context Protocol) servers** — External tool servers that extend Claude's capabilities. For example, a Firestore MCP server could let Claude directly read/write Firestore during testing. MCPs are configured in `.claude/settings.json`. Not strictly needed for this build but can accelerate debugging.
-
-**Plugins** — Not a distinct Claude Code concept; this term usually refers to MCPs or skills.
-
-### Recommended workflow for this build:
-1. I build each module sequentially (they're small enough that parallelization adds overhead without much time savings)
-2. After each module, we test it before moving on
-3. Use `/commit` after each working phase
-4. If we hit API/integration questions, I can spawn Explore agents to research docs
-
----
-
 ## Implementation Phases
 
 ### Phase 0: Project Scaffolding
