@@ -1,0 +1,31 @@
+"""Flask app entry point — thin routing layer."""
+
+from flask import Flask, request
+
+import sms_handler
+import reminder_handler
+
+app = Flask(__name__)
+
+
+@app.route("/sms-webhook", methods=["POST"])
+def sms_webhook():
+    result = sms_handler.handle_inbound_sms(
+        form_data=request.form.to_dict(),
+        request_url=request.url,
+        twilio_signature=request.headers.get("X-Twilio-Signature", ""),
+    )
+    return result, 200
+
+
+@app.route("/reminder-cron", methods=["POST"])
+def reminder_cron():
+    body, status_code = reminder_handler.handle_reminder_cron(
+        authorization_header=request.headers.get("Authorization"),
+    )
+    return body, status_code
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return "OK", 200
