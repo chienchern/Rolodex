@@ -1,0 +1,8 @@
+flask
+gunicorn
+twilio
+google-cloud-firestore
+gspread
+google-auth
+google-genai
+pytz
