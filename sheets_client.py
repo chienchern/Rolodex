@@ -31,9 +31,9 @@ def get_user_by_phone(phone: str) -> dict | None:
     client = _get_client()
     spreadsheet = client.open_by_key(MASTER_SHEET_ID)
     users_ws = spreadsheet.worksheet("Users")
-    rows = users_ws.get_all_records()
+    rows = users_ws.get_all_records(numericise_ignore=["all"])
     for row in rows:
-        if row["phone"] == phone:
+        if str(row["phone"]) == phone:
             return row
     return None
 

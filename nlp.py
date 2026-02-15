@@ -70,9 +70,23 @@ The current message may be a response to that clarification, or it may be a comp
 If it's a new intent, classify it as such and ignore the pending context."""
 
 
-def _build_prompt(sms_text, contact_names, pending_context, current_date_str):
+def _build_prompt(sms_text, contact_names, pending_context, current_date_str, contacts_data=None):
     """Build the Gemini prompt string."""
-    contact_list = "\n".join(f"- {name}" for name in contact_names) if contact_names else "- (no contacts yet)"
+    if contacts_data:
+        # Include full contact details so Gemini can answer queries
+        lines = []
+        for c in contacts_data:
+            parts = [c.get("name", "")]
+            if c.get("last_contact_date"):
+                parts.append(f"last contact: {c['last_contact_date']}")
+            if c.get("last_contact_notes"):
+                parts.append(f"notes: {c['last_contact_notes']}")
+            if c.get("reminder_date"):
+                parts.append(f"reminder: {c['reminder_date']}")
+            lines.append("- " + " | ".join(parts))
+        contact_list = "\n".join(lines) if lines else "- (no contacts yet)"
+    else:
+        contact_list = "\n".join(f"- {name}" for name in contact_names) if contact_names else "- (no contacts yet)"
 
     if pending_context:
         context_section = CONTEXT_TEMPLATE.format(
@@ -158,7 +172,7 @@ def _normalize_result(parsed):
     return result
 
 
-def parse_sms(sms_text, contact_names, pending_context, current_date_str):
+def parse_sms(sms_text, contact_names, pending_context, current_date_str, contacts_data=None):
     """Parse an SMS message using Gemini and return structured intent data.
 
     Args:
@@ -167,6 +181,7 @@ def parse_sms(sms_text, contact_names, pending_context, current_date_str):
         pending_context: Dict with multi-turn context, or None.
         current_date_str: Current date string with day-of-week
                           (e.g., "Friday, February 13, 2026").
+        contacts_data: Optional list of full contact dicts for query context.
 
     Returns:
         Dict with keys: intent, contacts, notes, follow_up_date,
@@ -175,7 +190,7 @@ def parse_sms(sms_text, contact_names, pending_context, current_date_str):
     Raises:
         Exception: If the Gemini API call itself fails.
     """
-    prompt = _build_prompt(sms_text, contact_names, pending_context, current_date_str)
+    prompt = _build_prompt(sms_text, contact_names, pending_context, current_date_str, contacts_data)
 
     # Call Gemini with structured JSON output
     response = genai_client.models.generate_content(

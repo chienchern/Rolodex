@@ -96,6 +96,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         contacts = sheets_client.get_active_contacts(sheet_id)
         settings = sheets_client.get_settings(sheet_id)
         contact_names = [c["name"] for c in contacts]
+        contacts_data = contacts  # Full contact dicts for query context
 
         # Compute current date string in user timezone
         tz_name = settings.get("timezone", "America/New_York")
@@ -110,7 +111,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         # ---------------------------------------------------------------
         # Step 9: Call Gemini NLP
         # ---------------------------------------------------------------
-        nlp_result = nlp.parse_sms(combined_text, contact_names, pending_context, current_date_str)
+        nlp_result = nlp.parse_sms(combined_text, contact_names, pending_context, current_date_str, contacts_data)
 
         intent = nlp_result.get("intent", "unknown")
         nlp_contacts = nlp_result.get("contacts", [])
