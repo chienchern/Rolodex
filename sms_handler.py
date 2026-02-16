@@ -9,7 +9,7 @@ from twilio.request_validator import RequestValidator
 import context
 import nlp
 import sheets_client
-from config import BATCH_WINDOW_SECONDS, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, send_sms
+from config import BATCH_WINDOW_SECONDS, TWILIO_AUTH_TOKEN, send_sms
 
 logger = logging.getLogger(__name__)
 

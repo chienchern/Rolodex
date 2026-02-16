@@ -2,15 +2,14 @@
 
 import base64
 import json
+import logging
 import os
 
-from twilio.rest import Client as TwilioClient
+import boto3
 
 # --- Required environment variables (fail-fast) ---
 
-TWILIO_ACCOUNT_SID = os.environ["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN = os.environ["TWILIO_AUTH_TOKEN"]
-TWILIO_PHONE_NUMBER = os.environ["TWILIO_PHONE_NUMBER"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 MASTER_SHEET_ID = os.environ["MASTER_SHEET_ID"]
 
@@ -26,15 +25,16 @@ IDEMPOTENCY_TTL_HOURS = 1
 
 # --- Clients ---
 
-twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+logger = logging.getLogger(__name__)
+sns_client = boto3.client("sns", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
 
 # --- Helpers ---
 
 def send_sms(to: str, body: str):
-    """Send an SMS via Twilio."""
-    twilio_client.messages.create(
-        body=body,
-        from_=TWILIO_PHONE_NUMBER,
-        to=to,
+    """Send an SMS via Amazon SNS."""
+    response = sns_client.publish(
+        PhoneNumber=to,
+        Message=body,
     )
+    logger.info("SNS message sent to %s, MessageId: %s", to, response.get("MessageId"))

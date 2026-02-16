@@ -10,9 +10,7 @@ import pytest
 # --- Environment variables ---
 
 SAMPLE_ENV = {
-    "TWILIO_ACCOUNT_SID": "ACtest1234567890",
     "TWILIO_AUTH_TOKEN": "test_auth_token_abc123",
-    "TWILIO_PHONE_NUMBER": "+15550001234",
     "GEMINI_API_KEY": "test_gemini_key",
     "MASTER_SHEET_ID": "master_sheet_id_abc123",
     "GSPREAD_CREDENTIALS_B64": base64.b64encode(
@@ -209,25 +207,23 @@ def mock_gspread_client():
         yield client
 
 
-# --- Mock Twilio ---
+# --- Mock SNS ---
 
 
 @pytest.fixture
-def mock_twilio_client():
-    """Patched Twilio client capturing messages.create() calls."""
-    with patch("twilio.rest.Client") as mock_cls:
+def mock_sns_client():
+    """Patched SNS client capturing publish() calls."""
+    with patch("boto3.client") as mock_boto:
         client = MagicMock()
-        mock_cls.return_value = client
+        mock_boto.return_value = client
 
         sent_messages = []
 
-        def capture_create(**kwargs):
+        def capture_publish(**kwargs):
             sent_messages.append(kwargs)
-            msg = MagicMock()
-            msg.sid = f"SM_test_{len(sent_messages)}"
-            return msg
+            return {"MessageId": f"sns_test_{len(sent_messages)}"}
 
-        client.messages.create.side_effect = capture_create
+        client.publish.side_effect = capture_publish
         client._sent_messages = sent_messages
         yield client
 

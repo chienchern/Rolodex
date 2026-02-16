@@ -6,3 +6,4 @@ gspread
 google-auth
 google-genai
 pytz
+boto3

@@ -86,12 +86,12 @@ def handler(env_vars):
             del sys.modules[mod_name]
 
     # Now mock external services before importing sms_handler
-    mock_twilio_client = MagicMock()
+    mock_sns_client = MagicMock()
     mock_genai_client = MagicMock()
     mock_firestore_client_cls = MagicMock()
     mock_gspread = MagicMock()
 
-    with patch("twilio.rest.Client", return_value=mock_twilio_client), \
+    with patch("boto3.client", return_value=mock_sns_client), \
          patch("google.genai.Client", return_value=mock_genai_client), \
          patch("google.cloud.firestore.Client", return_value=MagicMock()), \
          patch("gspread.service_account_from_dict", return_value=mock_gspread):
@@ -107,7 +107,6 @@ def handler(env_vars):
              patch.object(sms_handler, "nlp") as mock_nlp, \
              patch.object(sms_handler, "send_sms") as mock_send_sms, \
              patch.object(sms_handler, "TWILIO_AUTH_TOKEN", "test_auth_token"), \
-             patch.object(sms_handler, "TWILIO_PHONE_NUMBER", "+15550001234"), \
              patch.object(sms_handler, "BATCH_WINDOW_SECONDS", 5), \
              patch.object(sms_handler, "time") as mock_time:
 

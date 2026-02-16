@@ -1,11 +1,14 @@
 """Flask app entry point — thin routing layer."""
 
 from flask import Flask, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import sms_handler
 import reminder_handler
 
 app = Flask(__name__)
+# Cloud Run terminates TLS — trust X-Forwarded-Proto so request.url uses https://
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
 
 
 @app.route("/sms-webhook", methods=["POST"])
