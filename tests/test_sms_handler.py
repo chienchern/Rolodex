@@ -258,6 +258,89 @@ class TestLogInteraction:
         assert updates["reminder_date"] is not None
 
 
+class TestLogInteractionPreserveReminder:
+    """Bug 2: When no explicit timing, preserve existing reminder_date."""
+
+    def test_preserves_existing_reminder_when_no_follow_up_date(self, handler):
+        handler.mock_nlp.parse_sms.return_value = _nlp_response(
+            intent="log_interaction",
+            contacts=[{"name": "Sarah Chen", "match_type": "fuzzy"}],
+            notes="had coffee",
+            follow_up_date=None,
+            response_message="Updated Sarah Chen. Existing reminder unchanged.",
+        )
+        # Sarah Chen has reminder_date="2026-02-20" in SAMPLE_CONTACTS
+        handler.mock_sheets.get_active_contacts.return_value = [c.copy() for c in SAMPLE_CONTACTS]
+
+        handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
+
+        update_args = handler.mock_sheets.update_contact.call_args
+        updates = update_args[0][2]
+        # Should preserve existing reminder, not compute a new one
+        assert updates["reminder_date"] == "2026-02-20"
+
+    def test_uses_default_when_no_follow_up_and_no_existing_reminder(self, handler):
+        """Contact with no existing reminder gets default interval."""
+        handler.mock_nlp.parse_sms.return_value = _nlp_response(
+            intent="log_interaction",
+            contacts=[{"name": "Mike Torres", "match_type": "exact"}],
+            notes="lunch",
+            follow_up_date=None,
+            response_message="Updated Mike Torres.",
+        )
+        handler.mock_sheets.get_active_contacts.return_value = [c.copy() for c in SAMPLE_CONTACTS]
+
+        handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
+
+        update_args = handler.mock_sheets.update_contact.call_args
+        updates = update_args[0][2]
+        # Mike Torres has reminder_date="" so should get default
+        assert updates["reminder_date"] is not None
+        assert updates["reminder_date"] != ""
+
+
+class TestLogInteractionDate:
+    """Bug 1: last_contact_date should use interaction_date when available."""
+
+    def test_uses_interaction_date_when_provided(self, handler):
+        handler.mock_nlp.parse_sms.return_value = {
+            **_nlp_response(
+                intent="log_interaction",
+                contacts=[{"name": "Sarah Chen", "match_type": "fuzzy"}],
+                notes="had coffee",
+                follow_up_date="2026-03-01",
+                response_message="Updated Sarah Chen (met Friday, Feb 13).",
+            ),
+            "interaction_date": "2026-02-13",
+        }
+
+        handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
+
+        update_args = handler.mock_sheets.update_contact.call_args
+        updates = update_args[0][2]
+        assert updates["last_contact_date"] == "2026-02-13"
+
+    def test_uses_today_when_no_interaction_date(self, handler):
+        handler.mock_nlp.parse_sms.return_value = {
+            **_nlp_response(
+                intent="log_interaction",
+                contacts=[{"name": "Sarah Chen", "match_type": "fuzzy"}],
+                notes="had coffee",
+                follow_up_date="2026-03-01",
+                response_message="Updated Sarah Chen.",
+            ),
+            "interaction_date": None,
+        }
+
+        handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
+
+        update_args = handler.mock_sheets.update_contact.call_args
+        updates = update_args[0][2]
+        # Should use today_str (computed from now), not a hardcoded date
+        assert updates["last_contact_date"] is not None
+        assert updates["last_contact_date"] != "2026-02-13"
+
+
 class TestQuery:
     def test_no_sheet_updates_sends_response(self, handler):
         handler.mock_nlp.parse_sms.return_value = _nlp_response(
@@ -276,6 +359,40 @@ class TestQuery:
 
 
 class TestSetReminder:
+    def test_creates_log_entry(self, handler):
+        """Bug 3: set_reminder should create a log entry."""
+        handler.mock_nlp.parse_sms.return_value = _nlp_response(
+            intent="set_reminder",
+            contacts=[{"name": "Dad", "match_type": "exact"}],
+            notes="birthday",
+            follow_up_date="2026-04-01",
+            response_message="Reminder set for Dad on Wednesday, Apr 1, 2026.",
+        )
+
+        handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
+
+        handler.mock_sheets.add_log_entry.assert_called_once()
+        log_data = handler.mock_sheets.add_log_entry.call_args[0][1]
+        assert log_data["intent"] == "set_reminder"
+        assert log_data["contact_name"] == "Dad"
+
+    def test_uses_default_when_no_follow_up_date(self, handler):
+        """Bug 4: set_reminder with no timing uses default interval."""
+        handler.mock_nlp.parse_sms.return_value = _nlp_response(
+            intent="set_reminder",
+            contacts=[{"name": "Dad", "match_type": "exact"}],
+            notes=None,
+            follow_up_date=None,
+            response_message="Reminder set for Dad.",
+        )
+
+        handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
+
+        update_args = handler.mock_sheets.update_contact.call_args
+        updates = update_args[0][2]
+        assert updates["reminder_date"] is not None
+        assert updates["reminder_date"] != ""
+
     def test_updates_reminder_date_sends_confirmation(self, handler):
         handler.mock_nlp.parse_sms.return_value = _nlp_response(
             intent="set_reminder",
@@ -362,6 +479,39 @@ class TestClarify:
         assert "John" in sms_body
 
 
+class TestOnboarding:
+    """Bug 6: onboarding should log with intent='onboarding'."""
+
+    def test_onboarding_logs_with_correct_intent(self, handler):
+        handler.mock_nlp.parse_sms.return_value = {
+            **_nlp_response(
+                intent="onboarding",
+                contacts=[{"name": "Priya", "match_type": "new"}],
+                notes="dinner",
+                follow_up_date=None,
+                needs_clarification=False,
+                response_message="Added Priya to your rolodex.",
+            ),
+            "interaction_date": None,
+        }
+        handler.mock_context.get_context.return_value = {
+            "pending_intent": "onboarding",
+            "original_message": "Dinner with Priya",
+            "candidates": ["Priya"],
+        }
+
+        form_data = {**SAMPLE_FORM_DATA, "Body": "YES", "MessageSid": "SM_confirm_onboard"}
+        handler.mock_context.get_pending_messages.return_value = [
+            {"message_text": "YES", "message_sid": "SM_confirm_onboard",
+             "received_at": datetime.now(timezone.utc)}
+        ]
+        handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
+
+        handler.mock_sheets.add_log_entry.assert_called_once()
+        log_data = handler.mock_sheets.add_log_entry.call_args[0][1]
+        assert log_data["intent"] == "onboarding"
+
+
 class TestUnknown:
     def test_sends_response_message_as_is(self, handler):
         handler.mock_nlp.parse_sms.return_value = _nlp_response(
@@ -406,6 +556,34 @@ class TestMultiTurn:
         handler.mock_send_sms.assert_called_once()
         sms_body = handler.mock_send_sms.call_args[0][1]
         assert "Mike Torres" in sms_body
+
+    def test_clarify_context_not_discarded_on_resolution(self, handler):
+        """Bug 5: When pending_intent is 'clarify' and resolved intent is
+        'log_interaction', the context should NOT be discarded as stale."""
+        handler.mock_context.get_context.return_value = {
+            "pending_intent": "clarify",
+            "original_message": "Met with John for drinks",
+            "candidates": ["John Smith", "John Doe"],
+        }
+        handler.mock_nlp.parse_sms.return_value = _nlp_response(
+            intent="log_interaction",
+            contacts=[{"name": "John Doe", "match_type": "exact"}],
+            notes="drinks",
+            follow_up_date="2026-03-01",
+            response_message="Updated John Doe.",
+        )
+
+        form_data = {**SAMPLE_FORM_DATA, "Body": "Doe", "MessageSid": "SM_resolve_clarify"}
+        handler.mock_context.get_pending_messages.return_value = [
+            {"message_text": "Doe", "message_sid": "SM_resolve_clarify",
+             "received_at": datetime.now(timezone.utc)}
+        ]
+        handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
+
+        # Should process as log_interaction (not discard context)
+        handler.mock_sheets.update_contact.assert_called_once()
+        update_args = handler.mock_sheets.update_contact.call_args
+        assert update_args[0][1] == "John Doe"
 
     def test_valid_context_used_for_resolution(self, handler):
         """If user responds to clarification, context is used."""

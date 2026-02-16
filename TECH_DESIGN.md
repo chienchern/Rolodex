@@ -104,7 +104,10 @@ Messages are batched to handle multi-message sequences (e.g., user sends 3 texts
 12. Call Gemini with: combined SMS text, contact names, multi-turn context, current date+day-of-week in user timezone
 13. Gemini returns structured JSON (intent, contacts, notes, follow-up date, response message)
 14. **Multi-turn context resolution:** If pending context exists and Gemini returns a new intent (not a clarification response), discard the pending context and process as a fresh message
-15. Execute intent: update Sheets (Contacts tab, Logs tab), set reminder_date. Store the combined raw SMS text in the Logs tab `raw_message` column for debugging
+15. Execute intent: update Sheets (Contacts tab, Logs tab), set reminder_date. Store the combined raw SMS text in the Logs tab `raw_message` column for debugging. Intent-specific logic:
+    - **log_interaction**: Use `interaction_date` (parsed or today) for `last_contact_date`. Only set `reminder_date` if `follow_up_date` is provided OR contact has no existing `reminder_date`; otherwise preserve existing reminder.
+    - **set_reminder**: Update `reminder_date`. Add log entry with `intent = "set_reminder"`.
+    - **onboarding**: Handle new-contact confirmation (user replied "YES" to add a new contact). Create contact, update sheets, add log entry, send confirmation.
 16. Clear pending messages from Firestore
 17. Send reply SMS via `twilio_client.messages.create()`
 18. Return 200 OK
@@ -181,6 +184,7 @@ Output (structured JSON):
 ```json
 {
   "intent": "log_interaction | query | set_reminder | archive | onboarding | clarify | unknown",
+  "interaction_date": "2026-02-13",
   "contacts": [{"name": "John Smith", "match_type": "exact | fuzzy | new | ambiguous"}],
   "notes": "discussed his startup funding (or reason for reminder, e.g. 'birthday')",
   "follow_up_date": "2026-02-24",
@@ -190,7 +194,10 @@ Output (structured JSON):
 }
 ```
 
-The `notes` field should always be populated with relevant context — for interactions this is what was discussed, for reminders this is the reason (e.g., "birthday", "check in on job search").
+Field notes:
+- `interaction_date`: For `log_interaction`, the date the interaction occurred. Parsed from the message if the user references a specific past date/day (e.g., "met John yesterday" → yesterday's date, "saw Sarah on Friday" → last Friday's date). If no date is referenced, defaults to today's date. Always `null` for non-`log_interaction` intents.
+- `notes`: Always populated with relevant context — for interactions this is what was discussed, for reminders this is the reason (e.g., "birthday", "check in on job search").
+- `follow_up_date`: For `log_interaction`, only set when the user explicitly specifies timing (e.g., "follow up in 3 weeks"). Always relative to **today**, not the interaction date. `null` when no timing specified — the handler decides whether to use default interval or preserve existing reminder. For `set_reminder`, always set. If user omits timing ("Remind me about Sarah"), Gemini sets it to today + default_reminder_days.
 
 When `needs_clarification` is true, store context in Firestore with 10-min TTL and send `clarification_question` to user. If the next message from the user is a new intent rather than a clarification response (e.g., user ignores "Which Sarah?" and texts something unrelated), Gemini should classify it as the new intent — the app discards the pending context and processes the new message fresh.
 

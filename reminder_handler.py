@@ -14,6 +14,17 @@ from config import send_sms
 logger = logging.getLogger(__name__)
 
 
+def _format_date(date_str):
+    """Format a YYYY-MM-DD date string to human-readable (e.g., 'Jan 15, 2026')."""
+    if not date_str:
+        return "unknown date"
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.strftime("%b %-d, %Y")
+    except (ValueError, TypeError):
+        return date_str
+
+
 def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
     """Process daily reminder cron.
 
@@ -69,9 +80,13 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
 
                 # Day-of reminder
                 if reminder_date == today:
+                    last_contact_str = contact.get("last_contact_date", "")
+                    last_contact_display = _format_date(last_contact_str)
                     notes = contact.get("last_contact_notes", "")
+                    notes_part = f" about {notes}" if notes else ""
                     reminders.append(
-                        f"- {contact['name']} (last: {notes})"
+                        f"Today: Reach out to {contact['name']} "
+                        f"(last spoke on {last_contact_display}{notes_part})"
                     )
                     continue
 
@@ -86,15 +101,17 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
                             # Only send if reminder_date > last_contact_date + 7 days
                             if reminder_date > last_contact_date + timedelta(days=7):
                                 notes = contact.get("last_contact_notes", "")
+                                notes_part = f" about {notes}" if notes else ""
                                 reminders.append(
-                                    f"- {contact['name']} in 1 week (last: {notes})"
+                                    f"Reminder: Reach out to {contact['name']} in 1 week "
+                                    f"(last spoke{notes_part})"
                                 )
                         except (ValueError, TypeError):
                             pass
 
             # 4. Combine reminders into single SMS and send
             if reminders:
-                body = "Rolodex reminders:\n" + "\n".join(reminders)
+                body = "\n".join(reminders)
                 send_sms(to=phone, body=body)
 
         except Exception:

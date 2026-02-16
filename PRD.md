@@ -66,23 +66,27 @@ Users can text the system using natural language for:
   - Parses contact name(s) from message
   - If no name specified, asks: "Who did you meet with?"
   - If multiple people mentioned, updates all known contacts first, then enters the confirmation flow for any unknown names (does not hold the entire command)
-  - Updates last contact date to today
+  - Updates last contact date: if the message references a specific past date or day (e.g., "met John yesterday", "saw Sarah on Friday"), sets `last_contact_date` to that parsed date. Otherwise, defaults to today.
   - Appends a new row to the Logs tab with timestamp and note
   - Overwrites Last Contact Notes on the Contacts tab
-  - If timing specified ("follow up in 3 weeks"), sets reminder date accordingly and confirms with the precise day and date: "Updated John. Next reminder set for Monday, Mar 2, 2026."
-  - If timing NOT specified, sets reminder date using the default interval (configurable per user in Settings tab, default: 2 weeks) and confirms with the precise day and date: "Updated John. I'll remind you to reach out on Monday, Feb 23, 2026."
+  - If timing specified ("follow up in 3 weeks"), sets reminder date accordingly (relative to **today**, not the interaction date) and confirms with the precise day and date: "Updated John (met Friday, Feb 13). Next reminder set for Monday, Mar 2, 2026."
+  - If timing NOT specified **and** the contact has no existing reminder date, sets reminder date using the default interval (configurable per user in Settings tab, default: 2 weeks) and confirms with the precise day and date: "Updated John. I'll remind you to reach out on Monday, Feb 23, 2026."
+  - If timing NOT specified **and** the contact already has an existing reminder date, leaves the existing reminder date unchanged. Confirms: "Updated John. Existing reminder on Monday, Mar 2, 2026 unchanged."
   - If the system cannot parse a timing expression, it responds: "I couldn't understand that timing. Could you try again? (e.g., 'in 2 weeks', 'in 3 days')"
 
 **B. Custom Reminder**
 - Example: "Remind me about Sarah in 2 weeks"
+- Example (no timing): "Remind me about Sarah"
 - System behavior:
-  - Updates reminder date to specified time
+  - If timing specified, updates reminder date to specified time
+  - If timing NOT specified, sets reminder date using the default interval (today + default reminder days)
   - Confirms via SMS with the precise day and date: "Reminder set for Sarah on Monday, Feb 23, 2026."
 
 **C. Query Last Contact**
 - Example: "When did I last talk to John?"
 - System behavior:
   - Returns: "Last spoke with John on Jan 15, 2026. Discussed: his new job at TechCorp"
+  - If `last_contact_notes` is empty, omits the "Discussed:" part: "Last spoke with John on Jan 15, 2026."
 
 **D. Archive Contact**
 - Example: "Delete John" or "Remove Sarah from rolodex"
@@ -235,6 +239,7 @@ Users are pre-provisioned: an admin creates each user's personal spreadsheet (wi
 - **Manual sheet edits and reminders:** The reminder cron job runs once daily at 9am EST. If a user manually changes a Reminder Date in the sheet to "today" after the cron has already run, that reminder will not fire until the next day's cron run. Edits should be made before 9am EST to take effect same-day.
 - **No undo command:** If the NLP misparses a message (e.g., updates "Robert" instead of "Robbie"), the user must correct it manually in the Google Sheet. There is no SMS-based undo for MVP.
 - **No SMS-based reactivation of archived contacts:** Once a contact is archived, mentioning their name again creates a new contact rather than reactivating the archived one. To reactivate, the user must manually change the Status back to "Active" in Google Sheets.
+- **Standalone confirmations without context:** If the user sends "YES" or "NO" without an active multi-turn context (e.g., context expired after 10 minutes), the system responds: "I'm not sure what you're referring to. You can log an interaction, ask about a contact, or set a reminder."
 
 ---
 

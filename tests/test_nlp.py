@@ -87,6 +87,36 @@ class TestPromptConstruction:
         assert "Met with John for drinks" in prompt_str
 
     @patch("nlp.genai_client")
+    def test_prompt_mentions_interaction_date(self, mock_client, env_vars):
+        """Bug 7: Prompt should instruct Gemini to return interaction_date."""
+        mock_client.models.generate_content.return_value = _mock_genai_response(
+            json.dumps(SAMPLE_GEMINI_RESPONSE_LOG)
+        )
+
+        from nlp import parse_sms
+
+        parse_sms("Met Sarah yesterday", CONTACT_NAMES, None, CURRENT_DATE)
+
+        call_args = mock_client.models.generate_content.call_args
+        prompt_str = str(call_args)
+        assert "interaction_date" in prompt_str
+
+    @patch("nlp.genai_client")
+    def test_prompt_mentions_onboarding_intent(self, mock_client, env_vars):
+        """Bug 8: Prompt should list onboarding as a valid intent."""
+        mock_client.models.generate_content.return_value = _mock_genai_response(
+            json.dumps(SAMPLE_GEMINI_RESPONSE_LOG)
+        )
+
+        from nlp import parse_sms
+
+        parse_sms("Dinner with Priya", CONTACT_NAMES, None, CURRENT_DATE)
+
+        call_args = mock_client.models.generate_content.call_args
+        prompt_str = str(call_args)
+        assert "onboarding" in prompt_str
+
+    @patch("nlp.genai_client")
     def test_prompt_includes_sms_text(self, mock_client, env_vars):
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(SAMPLE_GEMINI_RESPONSE_LOG)
@@ -125,6 +155,56 @@ class TestResponseParsingHappyPath:
         assert result["follow_up_date"] == "2026-02-24"
         assert result["needs_clarification"] is False
         assert result["response_message"] is not None
+
+    @patch("nlp.genai_client")
+    def test_interaction_date_parsed(self, mock_client, env_vars):
+        """Bug 7/9: interaction_date should be extracted from NLP response."""
+        response = {
+            **SAMPLE_GEMINI_RESPONSE_LOG,
+            "interaction_date": "2026-02-13",
+        }
+        mock_client.models.generate_content.return_value = _mock_genai_response(
+            json.dumps(response)
+        )
+
+        from nlp import parse_sms
+
+        result = parse_sms("Met Sarah on Friday", CONTACT_NAMES, None, CURRENT_DATE)
+        assert result["interaction_date"] == "2026-02-13"
+
+    @patch("nlp.genai_client")
+    def test_interaction_date_defaults_to_none(self, mock_client, env_vars):
+        """Bug 9: interaction_date defaults to None when not in response."""
+        mock_client.models.generate_content.return_value = _mock_genai_response(
+            json.dumps(SAMPLE_GEMINI_RESPONSE_LOG)
+        )
+
+        from nlp import parse_sms
+
+        result = parse_sms("Had coffee with Sarah", CONTACT_NAMES, None, CURRENT_DATE)
+        assert result["interaction_date"] is None
+
+    @patch("nlp.genai_client")
+    def test_onboarding_intent_parsed(self, mock_client, env_vars):
+        """Bug 8: onboarding intent should be a valid parsed intent."""
+        response = {
+            "intent": "onboarding",
+            "contacts": [{"name": "Priya", "match_type": "new"}],
+            "notes": "dinner",
+            "follow_up_date": None,
+            "interaction_date": None,
+            "needs_clarification": True,
+            "clarification_question": "I don't have 'Priya' in your Rolodex. Want me to add them?",
+            "response_message": "I don't have 'Priya' in your Rolodex. Want me to add them?",
+        }
+        mock_client.models.generate_content.return_value = _mock_genai_response(
+            json.dumps(response)
+        )
+
+        from nlp import parse_sms
+
+        result = parse_sms("Dinner with Priya", CONTACT_NAMES, None, CURRENT_DATE)
+        assert result["intent"] == "onboarding"
 
     @patch("nlp.genai_client")
     def test_query_parsed(self, mock_client, env_vars):

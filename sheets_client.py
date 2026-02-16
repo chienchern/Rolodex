@@ -43,7 +43,7 @@ def get_all_users() -> list[dict]:
     client = _get_client()
     spreadsheet = client.open_by_key(MASTER_SHEET_ID)
     users_ws = spreadsheet.worksheet("Users")
-    return users_ws.get_all_records()
+    return users_ws.get_all_records(numericise_ignore=["all"])
 
 
 # ---------------------------------------------------------------------------

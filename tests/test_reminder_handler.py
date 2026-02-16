@@ -106,6 +106,30 @@ class TestReminderDateLogic:
         sms_body = handler.mock_send.call_args[1]["body"]
         assert "Sarah Chen" in sms_body
 
+    def test_day_of_reminder_format_includes_date_and_notes(self, handler):
+        """Bug 10: Day-of reminder should include last contact date and notes per PRD."""
+        tz = pytz.timezone("America/New_York")
+        today_str = datetime.now(tz).strftime("%Y-%m-%d")
+
+        user = {"phone": "+15550001111", "name": "Test User", "sheet_id": "sheet123"}
+        handler.mock_sc.get_all_users.return_value = [user]
+        handler.mock_sc.get_active_contacts.return_value = [
+            {
+                "name": "Sarah Chen",
+                "reminder_date": today_str,
+                "last_contact_date": "2026-01-15",
+                "last_contact_notes": "discussed her startup",
+                "status": "active",
+            }
+        ]
+
+        body, status = handler.mod.handle_reminder_cron("Bearer valid")
+        sms_body = handler.mock_send.call_args[1]["body"]
+        # PRD format: "Today: Reach out to Sarah Chen (last spoke on Jan 15, 2026 about discussed her startup)"
+        assert "Today" in sms_body
+        assert "Reach out to" in sms_body or "reach out to" in sms_body.lower()
+        assert "Jan" in sms_body or "2026-01-15" in sms_body  # last contact date present
+
     def test_one_week_before_reminder(self, handler):
         """Contact with reminder_date == today + 7, and no recent contact, gets 1-week-before reminder."""
         tz = pytz.timezone("America/New_York")
@@ -130,6 +154,31 @@ class TestReminderDateLogic:
         handler.mock_send.assert_called_once()
         sms_body = handler.mock_send.call_args[1]["body"]
         assert "Dad" in sms_body
+
+    def test_one_week_reminder_format(self, handler):
+        """Bug 10: 1-week reminder should include 'Reminder' prefix and notes."""
+        tz = pytz.timezone("America/New_York")
+        today = datetime.now(tz).date()
+        reminder_date = today + timedelta(days=7)
+        last_contact_date = today - timedelta(days=30)
+
+        user = {"phone": "+15550001111", "name": "Test User", "sheet_id": "sheet123"}
+        handler.mock_sc.get_all_users.return_value = [user]
+        handler.mock_sc.get_active_contacts.return_value = [
+            {
+                "name": "Dad",
+                "reminder_date": reminder_date.isoformat(),
+                "last_contact_date": last_contact_date.isoformat(),
+                "last_contact_notes": "called him about retirement",
+                "status": "active",
+            }
+        ]
+
+        body, status = handler.mod.handle_reminder_cron("Bearer valid")
+        sms_body = handler.mock_send.call_args[1]["body"]
+        # PRD format: "Reminder: Reach out to Dad in 1 week (last spoke about called him about retirement)"
+        assert "Reminder" in sms_body or "1 week" in sms_body
+        assert "Reach out to" in sms_body or "reach out to" in sms_body.lower()
 
     def test_no_one_week_reminder_for_recent_contact(self, handler):
         """Contact with reminder_date == today + 7 but recent interaction gets NO 1-week reminder."""

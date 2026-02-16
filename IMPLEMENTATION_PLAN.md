@@ -107,8 +107,10 @@ Prompt construction:
 
 Response parsing (happy path):
 - Well-formed JSON response is parsed into expected dict structure
-- All intent types handled: `log_interaction`, `query`, `set_reminder`, `archive`, `clarify`, `unknown`
+- All intent types handled: `log_interaction`, `query`, `set_reminder`, `archive`, `onboarding`, `clarify`, `unknown`
 - Multi-contact responses parsed correctly
+- `interaction_date` field parsed correctly for past date references (e.g., "yesterday", "on Friday")
+- `interaction_date` defaults to today when no date referenced
 
 Fallback parsing:
 - JSON wrapped in markdown backticks is extracted
@@ -144,12 +146,17 @@ Orchestration:
 - Batch window: defers if newer message exists
 
 Intent routing (one test per intent):
-- `log_interaction` — updates contact, adds log, sets reminder_date, sends reply
+- `log_interaction` — updates contact with `interaction_date` (not always today), adds log, sets reminder_date only if explicit timing or no existing reminder, sends reply
+- `log_interaction` (preserve existing reminder) — when no timing specified and contact has existing reminder_date, preserves it
 - `query` — no sheet updates, sends response_message
-- `set_reminder` — updates reminder_date, sends confirmation
+- `query` (empty notes) — omits "Discussed:" when last_contact_notes is empty
+- `set_reminder` — updates reminder_date, adds log entry with intent="set_reminder", sends confirmation
+- `set_reminder` (no timing) — uses default interval when user omits timing
 - `archive` — first call stores context asking confirmation; confirmation executes archive
+- `onboarding` — handles new-contact confirmation, creates contact, adds log, sends confirmation
 - `clarify` — resolves pending context and re-executes original intent
 - `unknown` — sends response_message as-is
+- `unknown` (standalone YES/NO) — responds with helpful message when no active context
 
 Multi-turn:
 - Stale context (new intent detected) is discarded
@@ -177,12 +184,13 @@ Full orchestration:
 13. Send reply SMS
 
 Intent execution details:
-- **log_interaction**: Update contact's `last_contact_date` + `last_contact_notes`, add log entry, compute `reminder_date` (explicit if provided, else `today + default_reminder_days`)
-- **query**: No sheet updates, just return info from `response_message`
-- **set_reminder**: Update `reminder_date` on contact
+- **log_interaction**: Set `last_contact_date` to `interaction_date` from Gemini (parsed past date or today). Update `last_contact_notes`, add log entry. For `reminder_date`: if `follow_up_date` is provided, use it; else if contact has no existing `reminder_date`, set to `today + default_reminder_days`; else preserve existing `reminder_date` unchanged.
+- **query**: No sheet updates, just return info from `response_message`. If `last_contact_notes` is empty, omit the "Discussed:" part.
+- **set_reminder**: Update `reminder_date` on contact. Add log entry with `intent = "set_reminder"`. If no timing specified by user, use `today + default_reminder_days`.
 - **archive**: Two-turn flow — first request stores context asking confirmation, confirmation executes archive
+- **onboarding**: Handle new-contact confirmation — user replied "YES" to add a new contact. Create the contact in Sheets, set `last_contact_date` to today (or parsed interaction date from original context), set `reminder_date` to `today + default_reminder_days`, add log entry, send confirmation.
 - **clarify**: Resolve pending context and re-execute original intent
-- **unknown**: Send `response_message` as-is
+- **unknown**: Send `response_message` as-is. This includes standalone "YES"/"NO" without active context — respond with a helpful message.
 
 Error handling: try/catch wrapping entire handler, sends "Something went wrong" SMS on failure.
 
@@ -374,7 +382,7 @@ Two-turn flow:
 | **Input SMS** | "Remind me about Dad in 1 month" |
 | **Expected reply contains** | "Dad", a date ~30 days from today (day-of-week + date) |
 | **Expected Contacts tab** | Dad: `reminder_date` = today + ~30 days. `last_contact_date` and `last_contact_notes` unchanged |
-| **Expected Logs tab** | No new rows (or row with `intent` = "set_reminder") |
+| **Expected Logs tab** | New row with `intent` = "set_reminder", `contact_name` = "Dad" |
 
 **Test 8: Reminder cron — day-of reminder**
 

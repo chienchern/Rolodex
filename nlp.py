@@ -41,10 +41,11 @@ The user sent this SMS:
 \"\"\"{sms_text}\"\"\"
 
 Classify the intent and return a JSON object with EXACTLY these fields:
-- "intent": one of "log_interaction", "query", "set_reminder", "archive", "clarify", "unknown"
+- "intent": one of "log_interaction", "query", "set_reminder", "archive", "onboarding", "clarify", "unknown"
 - "contacts": array of objects with "name" (string) and "match_type" ("exact", "fuzzy", "new", "ambiguous")
 - "notes": string with relevant context (what was discussed, reason for reminder, etc.) or null
-- "follow_up_date": ISO date string (YYYY-MM-DD) for the next follow-up, or null
+- "interaction_date": ISO date string (YYYY-MM-DD) for when the interaction occurred, or null. Only for "log_interaction" intent. If the user references a past date/day (e.g., "met John yesterday", "saw Sarah on Friday"), parse it relative to the current date. If no date is referenced, set to the current date.
+- "follow_up_date": ISO date string (YYYY-MM-DD) for the next follow-up, or null. Only set when user explicitly mentions timing (e.g., "follow up in 3 weeks"). Always relative to today's date, not the interaction date. For "set_reminder" with no timing specified, set to null.
 - "needs_clarification": boolean — true if the message is ambiguous
 - "clarification_question": string question to ask the user, or null
 - "response_message": string SMS reply to send to the user
@@ -52,11 +53,13 @@ Classify the intent and return a JSON object with EXACTLY these fields:
 Rules:
 - Match contact names from the provided list. Use "fuzzy" match_type for partial/nickname matches.
 - If a name matches multiple contacts, set intent to "clarify", needs_clarification to true, and list all candidates.
-- If a contact name is not in the list, use match_type "new".
-- For "log_interaction": always include notes about what was discussed. Compute follow_up_date if the user mentions timing.
-- For "query": return information from the contact list in response_message. No sheet updates needed.
-- For "set_reminder": set follow_up_date to the requested date.
+- If a contact name is not in the list, use match_type "new" and set intent to "onboarding" with needs_clarification true. Ask the user to confirm adding the new contact.
+- For "log_interaction": always include notes about what was discussed. Parse interaction_date from the message. Compute follow_up_date only if the user explicitly mentions timing.
+- For "query": return information from the contact list in response_message. No sheet updates needed. If last_contact_notes is empty, omit the "Discussed:" part.
+- For "set_reminder": set follow_up_date to the requested date. If no timing specified, set follow_up_date to null.
 - For "archive": set needs_clarification to true to confirm with the user.
+- For "onboarding": used when a contact name is not found in the list. Ask for confirmation to add a new contact.
+- If the message is just "YES" or "NO" with no pending context, set intent to "unknown" and respond with a helpful message.
 - Include day-of-week in response_message dates (e.g., "Monday, Feb 24, 2026").
 - Return ONLY the JSON object, no other text.
 """
@@ -141,6 +144,7 @@ def _make_fallback_response(message=None):
         "intent": "unknown",
         "contacts": [],
         "notes": None,
+        "interaction_date": None,
         "follow_up_date": None,
         "needs_clarification": False,
         "clarification_question": None,
@@ -155,6 +159,7 @@ def _normalize_result(parsed):
         "intent": parsed.get("intent"),
         "contacts": parsed.get("contacts", []),
         "notes": parsed.get("notes"),
+        "interaction_date": parsed.get("interaction_date"),
         "follow_up_date": parsed.get("follow_up_date"),
         "needs_clarification": parsed.get("needs_clarification", False),
         "clarification_question": parsed.get("clarification_question"),
