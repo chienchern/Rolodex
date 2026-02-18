@@ -62,6 +62,13 @@ Rules:
 - If the message is just "YES" or "NO" with no pending context, set intent to "unknown" and respond with a helpful message.
 - Include day-of-week in response_message dates (e.g., "Monday, Feb 24, 2026").
 - Return ONLY the JSON object, no other text.
+
+Multi-turn confirmation rules (OVERRIDE the rules above when pending context exists):
+- If the pending intent is "onboarding" and the user CONFIRMS (e.g., yes, sure, yeah, go ahead, add them, do it, sounds good), set intent to "onboarding", needs_clarification to false, use the candidates from the pending context as contacts with match_type "new", and write a confirmation response_message. Preserve the notes from the original message.
+- If the pending intent is "archive" and the user CONFIRMS, set intent to "archive", needs_clarification to false, use the candidates as contacts, and confirm archival.
+- If the pending intent is "clarify" and the user specifies which candidate they meant, set intent to "log_interaction" (or whatever the original intent was), needs_clarification to false, with the chosen contact.
+- If the user DECLINES (e.g., no, cancel, nevermind, nope), set intent to "unknown" with response_message "OK, cancelled."
+- If the user sends a completely new message unrelated to the pending clarification, ignore the pending context and classify as a new intent.
 """
 
 CONTEXT_TEMPLATE = """\
@@ -195,19 +202,31 @@ def parse_sms(sms_text, contact_names, pending_context, current_date_str, contac
     Raises:
         Exception: If the Gemini API call itself fails.
     """
+    # Handle bot commands (e.g. /start, /help) without calling Gemini
+    if sms_text.strip().startswith("/"):
+        return _make_fallback_response(
+            "Hi! Send me a message like 'Had coffee with Sarah today' "
+            "to log an interaction, or 'When did I last talk to John?' "
+            "to query a contact."
+        )
+
     prompt = _build_prompt(sms_text, contact_names, pending_context, current_date_str, contacts_data)
 
     # Call Gemini with structured JSON output
-    response = genai_client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
+    try:
+        response = genai_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
+        raw_text = response.text
+    except Exception:
+        logger.exception("Gemini API call failed")
+        return _make_fallback_response()
 
     # Parse the response
-    raw_text = response.text
     parsed = _extract_json(raw_text)
 
     if parsed is None:
