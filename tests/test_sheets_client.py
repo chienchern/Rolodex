@@ -62,6 +62,55 @@ class TestGetUserByPhone:
 
 
 # ---------------------------------------------------------------------------
+# get_user_by_telegram_chat_id
+# ---------------------------------------------------------------------------
+
+class TestGetUserByTelegramChatId:
+    """Tests for get_user_by_telegram_chat_id(chat_id)."""
+
+    def test_returns_user_dict_when_found(self, env_vars, mock_gspread_client):
+        from sheets_client import get_user_by_telegram_chat_id
+
+        users_ws = mock_gspread_client._worksheets["Users"]
+        users_ws.get_all_records.return_value = [SAMPLE_USER.copy()]
+
+        result = get_user_by_telegram_chat_id("123456789")
+
+        assert result is not None
+        assert result["telegram_chat_id"] == "123456789"
+        assert result["sheet_id"] == "test_sheet_id_xyz"
+
+    def test_returns_none_when_not_found(self, env_vars, mock_gspread_client):
+        from sheets_client import get_user_by_telegram_chat_id
+
+        result = get_user_by_telegram_chat_id("999999999")
+
+        assert result is None
+
+    def test_matches_numeric_chat_id_stored_as_string(self, env_vars, mock_gspread_client):
+        from sheets_client import get_user_by_telegram_chat_id
+
+        users_ws = mock_gspread_client._worksheets["Users"]
+        users_ws.get_all_records.return_value = [
+            {**SAMPLE_USER.copy(), "telegram_chat_id": "123456789"}
+        ]
+
+        result = get_user_by_telegram_chat_id("123456789")
+
+        assert result is not None
+
+    def test_uses_master_sheet_id(self, env_vars, mock_gspread_client):
+        from sheets_client import get_user_by_telegram_chat_id
+
+        users_ws = mock_gspread_client._worksheets["Users"]
+        users_ws.get_all_records.return_value = [SAMPLE_USER.copy()]
+
+        get_user_by_telegram_chat_id("123456789")
+
+        mock_gspread_client.open_by_key.assert_called_with("master_sheet_id_abc123")
+
+
+# ---------------------------------------------------------------------------
 # get_all_users
 # ---------------------------------------------------------------------------
 

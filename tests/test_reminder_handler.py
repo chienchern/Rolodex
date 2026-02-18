@@ -20,7 +20,7 @@ def handler(env_vars):
     """
     with patch("reminder_handler.id_token") as mock_id_token, \
          patch("reminder_handler.sheets_client") as mock_sc, \
-         patch("reminder_handler.send_sms") as mock_send:
+         patch("reminder_handler.send_message") as mock_send:
 
         mock_id_token.verify_oauth2_token.return_value = {"email": "scheduler@gcp.iam"}
         mock_sc.get_all_users.return_value = []
@@ -103,7 +103,7 @@ class TestReminderDateLogic:
         body, status = handler.mod.handle_reminder_cron("Bearer valid")
         assert status == 200
         handler.mock_send.assert_called_once()
-        sms_body = handler.mock_send.call_args[1]["body"]
+        sms_body = handler.mock_send.call_args[0][1]
         assert "Sarah Chen" in sms_body
 
     def test_day_of_reminder_format_includes_date_and_notes(self, handler):
@@ -124,7 +124,7 @@ class TestReminderDateLogic:
         ]
 
         body, status = handler.mod.handle_reminder_cron("Bearer valid")
-        sms_body = handler.mock_send.call_args[1]["body"]
+        sms_body = handler.mock_send.call_args[0][1]
         # PRD format: "Today: Reach out to Sarah Chen (last spoke on Jan 15, 2026 about discussed her startup)"
         assert "Today" in sms_body
         assert "Reach out to" in sms_body or "reach out to" in sms_body.lower()
@@ -152,7 +152,7 @@ class TestReminderDateLogic:
         body, status = handler.mod.handle_reminder_cron("Bearer valid")
         assert status == 200
         handler.mock_send.assert_called_once()
-        sms_body = handler.mock_send.call_args[1]["body"]
+        sms_body = handler.mock_send.call_args[0][1]
         assert "Dad" in sms_body
 
     def test_one_week_reminder_format(self, handler):
@@ -175,7 +175,7 @@ class TestReminderDateLogic:
         ]
 
         body, status = handler.mod.handle_reminder_cron("Bearer valid")
-        sms_body = handler.mock_send.call_args[1]["body"]
+        sms_body = handler.mock_send.call_args[0][1]
         # PRD format: "Reminder: Reach out to Dad in 1 week (last spoke about called him about retirement)"
         assert "Reminder" in sms_body or "1 week" in sms_body
         assert "Reach out to" in sms_body or "reach out to" in sms_body.lower()
@@ -271,7 +271,7 @@ class TestSMSBatching:
         assert status == 200
         # Only one SMS call for the user, not two
         handler.mock_send.assert_called_once()
-        sms_body = handler.mock_send.call_args[1]["body"]
+        sms_body = handler.mock_send.call_args[0][1]
         assert "Sarah Chen" in sms_body
         assert "Dad" in sms_body
 
@@ -309,5 +309,5 @@ class TestTimezoneHandling:
 
         assert status == 200
         handler.mock_send.assert_called_once()
-        sms_body = handler.mock_send.call_args[1]["body"]
+        sms_body = handler.mock_send.call_args[0][1]
         assert "Kiwi Friend" in sms_body

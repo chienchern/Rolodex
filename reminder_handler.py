@@ -114,7 +114,7 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
                 send_message(user, body)
 
         except Exception:
-            logger.exception("Error processing reminders for user %s", phone)
+            logger.exception("Error processing reminders for user %s", user.get("phone", "unknown"))
             continue
 
     return ("OK", 200)
