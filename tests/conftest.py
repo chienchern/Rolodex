@@ -10,9 +10,9 @@ import pytest
 # --- Environment variables ---
 
 SAMPLE_ENV = {
-    "TWILIO_AUTH_TOKEN": "test_auth_token_abc123",
     "GEMINI_API_KEY": "test_gemini_key",
     "MASTER_SHEET_ID": "master_sheet_id_abc123",
+    "MESSAGING_CHANNEL": "telegram",
     "GSPREAD_CREDENTIALS_B64": base64.b64encode(
         json.dumps(
             {
@@ -85,6 +85,7 @@ SAMPLE_SETTINGS = {
 
 SAMPLE_USER = {
     "phone": "+15550001111",
+    "telegram_chat_id": "123456789",
     "name": "Test User",
     "sheet_id": "test_sheet_id_xyz",
 }
@@ -207,25 +208,21 @@ def mock_gspread_client():
         yield client
 
 
-# --- Mock SNS ---
+# --- Mock send_message ---
 
 
 @pytest.fixture
-def mock_sns_client():
-    """Patched SNS client capturing publish() calls."""
-    with patch("boto3.client") as mock_boto:
-        client = MagicMock()
-        mock_boto.return_value = client
-
+def mock_send_message():
+    """Patched messaging.send_message capturing all outbound messages."""
+    with patch("messaging.send_message") as mock_send:
         sent_messages = []
 
-        def capture_publish(**kwargs):
-            sent_messages.append(kwargs)
-            return {"MessageId": f"sns_test_{len(sent_messages)}"}
+        def capture_send(user, text):
+            sent_messages.append({"user": user, "text": text})
 
-        client.publish.side_effect = capture_publish
-        client._sent_messages = sent_messages
-        yield client
+        mock_send.side_effect = capture_send
+        mock_send._sent_messages = sent_messages
+        yield mock_send
 
 
 # --- Mock Gemini (google.genai) ---

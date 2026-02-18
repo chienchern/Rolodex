@@ -82,40 +82,42 @@ def handler(env_vars):
     """
     # Remove cached modules so sms_handler re-imports cleanly
     for mod_name in list(sys.modules.keys()):
-        if mod_name in ("sms_handler", "config", "nlp", "sheets_client", "context"):
+        if mod_name in ("sms_handler", "config", "messaging", "contact_actions",
+                        "nlp", "sheets_client", "context"):
             del sys.modules[mod_name]
 
-    # Now mock external services before importing sms_handler
-    mock_sns_client = MagicMock()
     mock_genai_client = MagicMock()
-    mock_firestore_client_cls = MagicMock()
     mock_gspread = MagicMock()
 
-    with patch("boto3.client", return_value=mock_sns_client), \
-         patch("google.genai.Client", return_value=mock_genai_client), \
+    with patch("google.genai.Client", return_value=mock_genai_client), \
          patch("google.cloud.firestore.Client", return_value=MagicMock()), \
          patch("gspread.service_account_from_dict", return_value=mock_gspread):
 
-        # Import sms_handler (triggers config, nlp, sheets_client, context imports)
         import sms_handler
+        import contact_actions
         importlib.reload(sms_handler)
 
-        # Now patch the module-level references within sms_handler
+        # Single shared mock for sheets so both sms_handler and contact_actions
+        # see the same object — contact_actions calls update_contact etc. directly.
+        mock_sheets = MagicMock()
+        mock_sheets.get_user_by_phone.return_value = SAMPLE_USER.copy()
+        mock_sheets.get_active_contacts.return_value = [c.copy() for c in SAMPLE_CONTACTS]
+        mock_sheets.get_settings.return_value = SAMPLE_SETTINGS.copy()
+
         with patch.object(sms_handler, "RequestValidator") as mock_rv_cls, \
              patch.object(sms_handler, "context") as mock_context, \
-             patch.object(sms_handler, "sheets_client") as mock_sheets, \
+             patch.object(sms_handler, "sheets_client", mock_sheets), \
+             patch.object(contact_actions, "sheets_client", mock_sheets), \
              patch.object(sms_handler, "nlp") as mock_nlp, \
-             patch.object(sms_handler, "send_sms") as mock_send_sms, \
+             patch.object(sms_handler, "send_message") as mock_send_message, \
              patch.object(sms_handler, "TWILIO_AUTH_TOKEN", "test_auth_token"), \
              patch.object(sms_handler, "BATCH_WINDOW_SECONDS", 5), \
              patch.object(sms_handler, "time") as mock_time:
 
-            # RequestValidator setup
             mock_validator = MagicMock()
             mock_rv_cls.return_value = mock_validator
             mock_validator.validate.return_value = True
 
-            # Context defaults
             mock_context.is_message_processed.return_value = False
             mock_context.has_newer_message.return_value = False
             mock_context.get_context.return_value = None
@@ -125,12 +127,6 @@ def handler(env_vars):
                  "received_at": datetime.now(timezone.utc)}
             ]
 
-            # Sheets defaults
-            mock_sheets.get_user_by_phone.return_value = SAMPLE_USER.copy()
-            mock_sheets.get_active_contacts.return_value = [c.copy() for c in SAMPLE_CONTACTS]
-            mock_sheets.get_settings.return_value = SAMPLE_SETTINGS.copy()
-
-            # NLP default
             mock_nlp.parse_sms.return_value = _nlp_response(
                 intent="log_interaction",
                 contacts=[{"name": "Sarah Chen", "match_type": "fuzzy"}],
@@ -139,7 +135,6 @@ def handler(env_vars):
                 response_message="Updated Sarah Chen. I'll remind you on Sunday, Mar 1, 2026.",
             )
 
-            # time.sleep is a no-op
             mock_time.sleep.return_value = None
 
             class Ns:
@@ -150,7 +145,7 @@ def handler(env_vars):
             ns.mock_context = mock_context
             ns.mock_sheets = mock_sheets
             ns.mock_nlp = mock_nlp
-            ns.mock_send_sms = mock_send_sms
+            ns.mock_send_message = mock_send_message
             ns.mock_time = mock_time
             ns.mock_rv_cls = mock_rv_cls
             yield ns
@@ -164,7 +159,7 @@ class TestSignatureValidation:
     def test_valid_signature_proceeds(self, handler):
         handler.mock_validator.validate.return_value = True
         result = handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
-        handler.mock_send_sms.assert_called()
+        handler.mock_send_message.assert_called()
 
     def test_invalid_signature_returns_error(self, handler):
         handler.mock_validator.validate.return_value = False
@@ -179,15 +174,15 @@ class TestIdempotency:
         result = handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
         handler.mock_nlp.parse_sms.assert_not_called()
         handler.mock_sheets.update_contact.assert_not_called()
-        handler.mock_send_sms.assert_not_called()
+        handler.mock_send_message.assert_not_called()
 
 
 class TestUserLookup:
     def test_unknown_phone_sends_error_sms(self, handler):
         handler.mock_sheets.get_user_by_phone.return_value = None
         result = handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
-        handler.mock_send_sms.assert_called_once()
-        sms_body = handler.mock_send_sms.call_args[0][1]
+        handler.mock_send_message.assert_called_once()
+        sms_body = handler.mock_send_message.call_args[0][1]
         assert "not" in sms_body.lower() or "error" in sms_body.lower() or "registered" in sms_body.lower()
 
 
@@ -196,7 +191,7 @@ class TestBatchWindow:
         handler.mock_context.has_newer_message.return_value = True
         result = handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
         handler.mock_nlp.parse_sms.assert_not_called()
-        handler.mock_send_sms.assert_not_called()
+        handler.mock_send_message.assert_not_called()
         handler.mock_time.sleep.assert_called()
 
     def test_sleep_called_with_batch_window(self, handler):
@@ -238,7 +233,7 @@ class TestLogInteraction:
         assert log_data["intent"] == "log_interaction"
 
         # Send reply
-        handler.mock_send_sms.assert_called_once()
+        handler.mock_send_message.assert_called_once()
 
     def test_uses_default_reminder_days_when_no_follow_up_date(self, handler):
         handler.mock_nlp.parse_sms.return_value = _nlp_response(
@@ -352,8 +347,8 @@ class TestQuery:
 
         handler.mock_sheets.update_contact.assert_not_called()
         handler.mock_sheets.add_log_entry.assert_not_called()
-        handler.mock_send_sms.assert_called_once()
-        sms_body = handler.mock_send_sms.call_args[0][1]
+        handler.mock_send_message.assert_called_once()
+        sms_body = handler.mock_send_message.call_args[0][1]
         assert "Mike Torres" in sms_body
 
 
@@ -408,7 +403,7 @@ class TestSetReminder:
         updates = update_args[0][2]
         assert updates["reminder_date"] == "2026-04-01"
 
-        handler.mock_send_sms.assert_called_once()
+        handler.mock_send_message.assert_called_once()
 
 
 class TestArchive:
@@ -427,7 +422,7 @@ class TestArchive:
         ctx_data = handler.mock_context.store_context.call_args[0][1]
         assert ctx_data["pending_intent"] == "archive"
         handler.mock_sheets.archive_contact.assert_not_called()
-        handler.mock_send_sms.assert_called_once()
+        handler.mock_send_message.assert_called_once()
 
     def test_confirmation_executes_archive(self, handler):
         handler.mock_context.get_context.return_value = {
@@ -452,7 +447,7 @@ class TestArchive:
         handler.mock_sheets.archive_contact.assert_called_once()
         archive_args = handler.mock_sheets.archive_contact.call_args
         assert archive_args[0][1] == "Sarah Chen"
-        handler.mock_send_sms.assert_called_once()
+        handler.mock_send_message.assert_called_once()
 
 
 class TestClarify:
@@ -473,8 +468,8 @@ class TestClarify:
         handler.mock_context.store_context.assert_called_once()
         ctx_data = handler.mock_context.store_context.call_args[0][1]
         assert "candidates" in ctx_data
-        handler.mock_send_sms.assert_called_once()
-        sms_body = handler.mock_send_sms.call_args[0][1]
+        handler.mock_send_message.assert_called_once()
+        sms_body = handler.mock_send_message.call_args[0][1]
         assert "John" in sms_body
 
 
@@ -521,8 +516,8 @@ class TestUnknown:
         handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
 
         handler.mock_sheets.update_contact.assert_not_called()
-        handler.mock_send_sms.assert_called_once()
-        sms_body = handler.mock_send_sms.call_args[0][1]
+        handler.mock_send_message.assert_called_once()
+        sms_body = handler.mock_send_message.call_args[0][1]
         assert "couldn't understand" in sms_body.lower() or "coffee" in sms_body.lower()
 
 
@@ -552,8 +547,8 @@ class TestMultiTurn:
         handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
 
         handler.mock_context.clear_context.assert_called()
-        handler.mock_send_sms.assert_called_once()
-        sms_body = handler.mock_send_sms.call_args[0][1]
+        handler.mock_send_message.assert_called_once()
+        sms_body = handler.mock_send_message.call_args[0][1]
         assert "Mike Torres" in sms_body
 
     def test_clarify_context_not_discarded_on_resolution(self, handler):
@@ -628,6 +623,6 @@ class TestErrorHandling:
 
         result = handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
 
-        handler.mock_send_sms.assert_called_once()
-        sms_body = handler.mock_send_sms.call_args[0][1]
+        handler.mock_send_message.assert_called_once()
+        sms_body = handler.mock_send_message.call_args[0][1]
         assert "something went wrong" in sms_body.lower()

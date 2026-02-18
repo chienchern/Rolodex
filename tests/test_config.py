@@ -1,4 +1,4 @@
-"""Tests for config.py — env var loading, constants, send_sms helper."""
+"""Tests for config.py — env var loading and constants."""
 
 import base64
 import json
@@ -15,13 +15,12 @@ class TestEnvVarLoading:
         import config
 
         importlib.reload(config)
-        assert config.TWILIO_AUTH_TOKEN == env_vars["TWILIO_AUTH_TOKEN"]
         assert config.GEMINI_API_KEY == env_vars["GEMINI_API_KEY"]
         assert config.MASTER_SHEET_ID == env_vars["MASTER_SHEET_ID"]
+        assert config.MESSAGING_CHANNEL == env_vars["MESSAGING_CHANNEL"]
 
     def test_missing_required_env_var_raises(self, monkeypatch):
         # Set all but one
-        monkeypatch.setenv("TWILIO_AUTH_TOKEN", "x")
         monkeypatch.setenv("GEMINI_API_KEY", "x")
         monkeypatch.setenv("MASTER_SHEET_ID", "x")
         # Don't set GSPREAD_CREDENTIALS_B64
@@ -64,21 +63,3 @@ class TestConstants:
         assert config.IDEMPOTENCY_TTL_HOURS == 1
 
 
-class TestSendSms:
-    """send_sms() calls SNS client correctly."""
-
-    def test_send_sms_calls_sns(self, env_vars):
-        import config
-
-        importlib.reload(config)
-
-        mock_sns = MagicMock()
-        mock_sns.publish.return_value = {"MessageId": "test-123"}
-        config.sns_client = mock_sns
-
-        config.send_sms("+15559999999", "Hello!")
-
-        mock_sns.publish.assert_called_once_with(
-            PhoneNumber="+15559999999",
-            Message="Hello!",
-        )
