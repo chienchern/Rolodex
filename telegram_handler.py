@@ -1,16 +1,15 @@
-"""SMS webhook handler — full inbound SMS orchestration."""
+"""Telegram webhook handler — inbound Telegram message orchestration."""
 
 import logging
 import time
 from datetime import datetime, timezone
 
 import pytz
-from twilio.request_validator import RequestValidator
 
 import context
 import nlp
 import sheets_client
-from config import BATCH_WINDOW_SECONDS, TWILIO_AUTH_TOKEN
+from config import BATCH_WINDOW_SECONDS, TELEGRAM_SECRET_TOKEN
 from contact_actions import (
     execute_archive,
     execute_log_interaction,
@@ -22,81 +21,93 @@ from messaging import send_message
 logger = logging.getLogger(__name__)
 
 
-def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str) -> str:
-    """Process an inbound SMS from Twilio.
+def handle_inbound_telegram(json_data: dict, secret_token_header: str | None) -> str:
+    """Process an inbound Telegram update.
 
     Args:
-        form_data: The POST form data from Twilio (Body, From, MessageSid, etc.).
-        request_url: The full URL that Twilio posted to.
-        twilio_signature: The X-Twilio-Signature header value.
+        json_data: The parsed JSON body from Telegram.
+        secret_token_header: The X-Telegram-Bot-Api-Secret-Token header value.
 
     Returns:
         A string response body (empty string for 200 OK).
     """
     # ---------------------------------------------------------------
-    # Step 1: Validate Twilio signature
+    # Step 1: Validate secret token
     # ---------------------------------------------------------------
-    validator = RequestValidator(TWILIO_AUTH_TOKEN)
-    if not validator.validate(request_url, form_data, twilio_signature):
-        logger.warning("Invalid Twilio signature")
-        return "Invalid signature"
+    if TELEGRAM_SECRET_TOKEN and secret_token_header != TELEGRAM_SECRET_TOKEN:
+        logger.warning("Invalid Telegram secret token")
+        return "Forbidden"
 
-    message_sid = form_data.get("MessageSid", "")
-    from_phone = form_data.get("From", "")
-    body = form_data.get("Body", "")
+    # ---------------------------------------------------------------
+    # Step 2: Extract message fields — ignore non-message updates
+    # ---------------------------------------------------------------
+    message = json_data.get("message")
+    if not message:
+        return ""  # channel posts, edited messages, etc.
+
+    chat_id = str(message["chat"]["id"])
+    text = message.get("text", "").strip()
+    update_id = str(json_data.get("update_id", ""))
+
+    if not text:
+        return ""  # photos, stickers, voice notes, etc.
 
     try:
         # ---------------------------------------------------------------
-        # Step 2: Idempotency check
+        # Step 3: Idempotency check
         # ---------------------------------------------------------------
-        if context.is_message_processed(message_sid):
-            logger.info("Duplicate message %s, skipping", message_sid)
+        if context.is_message_processed(update_id):
+            logger.info("Duplicate update %s, skipping", update_id)
             return ""
 
-        context.mark_message_processed(message_sid)
+        context.mark_message_processed(update_id)
 
         # ---------------------------------------------------------------
-        # Step 3: User lookup by phone number
+        # Step 4: User lookup by Telegram chat ID
         # ---------------------------------------------------------------
-        user = sheets_client.get_user_by_phone(from_phone)
+        user = sheets_client.get_user_by_telegram_chat_id(chat_id)
         if user is None:
-            send_message({"phone": from_phone}, "This phone number is not registered with Rolodex.")
+            send_message(
+                {"telegram_chat_id": chat_id},
+                f"This Telegram account is not registered with Rolodex. "
+                f"Your chat ID is: {chat_id}",
+            )
             return ""
 
         sheet_id = user["sheet_id"]
 
         # ---------------------------------------------------------------
-        # Step 4: Store pending message and sleep for batch window
+        # Step 5: Store pending message and sleep for batch window
         # ---------------------------------------------------------------
-        context.store_pending_message(from_phone, body, message_sid)
+        context.store_pending_message(chat_id, text, update_id)
         time.sleep(BATCH_WINDOW_SECONDS)
 
         # ---------------------------------------------------------------
-        # Step 5: Check for newer messages — defer if not the last
+        # Step 6: Check for newer messages — defer if not the last
         # ---------------------------------------------------------------
-        pending = context.get_pending_messages(from_phone)
+        pending = context.get_pending_messages(chat_id)
         my_received_at = None
         for msg in pending:
-            if msg.get("message_sid") == message_sid:
+            if msg.get("message_sid") == update_id:
                 my_received_at = msg.get("received_at")
                 break
 
-        if my_received_at and context.has_newer_message(from_phone, my_received_at):
-            logger.info("Newer message exists for %s, deferring", from_phone)
+        if my_received_at and context.has_newer_message(chat_id, my_received_at):
+            logger.info("Newer message exists for %s, deferring", chat_id)
             return ""
 
         # ---------------------------------------------------------------
-        # Step 6: Combine batched messages
+        # Step 7: Combine batched messages
         # ---------------------------------------------------------------
         combined_text = " ".join(msg["message_text"] for msg in pending)
 
         # ---------------------------------------------------------------
-        # Step 7: Retrieve multi-turn context
+        # Step 8: Retrieve multi-turn context
         # ---------------------------------------------------------------
-        pending_context = context.get_context(from_phone)
+        pending_context = context.get_context(chat_id)
 
         # ---------------------------------------------------------------
-        # Step 8: Read contacts + settings from Sheets
+        # Step 9: Read contacts + settings from Sheets
         # ---------------------------------------------------------------
         contacts = sheets_client.get_active_contacts(sheet_id)
         settings = sheets_client.get_settings(sheet_id)
@@ -111,7 +122,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         current_date_str = now_local.strftime("%A, %B %d, %Y")
 
         # ---------------------------------------------------------------
-        # Step 9: Call Gemini NLP
+        # Step 10: Call Gemini NLP
         # ---------------------------------------------------------------
         nlp_result = nlp.parse_sms(combined_text, contact_names, pending_context, current_date_str, contacts)
 
@@ -125,16 +136,16 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         response_message = nlp_result.get("response_message", "")
 
         # ---------------------------------------------------------------
-        # Step 10: Handle multi-turn resolution
+        # Step 11: Handle multi-turn resolution
         # ---------------------------------------------------------------
         if pending_context:
             pending_intent = pending_context.get("pending_intent")
             if intent != pending_intent and intent not in ("clarify",):
-                context.clear_context(from_phone)
+                context.clear_context(chat_id)
                 pending_context = None
 
         # ---------------------------------------------------------------
-        # Step 11: Execute intent
+        # Step 12: Execute intent
         # ---------------------------------------------------------------
         today_str = now_local.strftime("%Y-%m-%d")
         default_reminder_days = int(settings.get("default_reminder_days", 14))
@@ -158,18 +169,18 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         elif intent == "archive":
             if needs_clarification:
                 candidates = [c["name"] for c in nlp_contacts]
-                context.store_context(from_phone, {
+                context.store_context(chat_id, {
                     "pending_intent": "archive",
                     "original_message": combined_text,
                     "candidates": candidates,
                 })
             else:
                 execute_archive(sheet_id, nlp_contacts)
-                context.clear_context(from_phone)
+                context.clear_context(chat_id)
 
         elif intent == "clarify":
             candidates = [c["name"] for c in nlp_contacts]
-            context.store_context(from_phone, {
+            context.store_context(chat_id, {
                 "pending_intent": "clarify",
                 "original_message": combined_text,
                 "candidates": candidates,
@@ -178,7 +189,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         elif intent == "onboarding":
             if needs_clarification:
                 candidates = [c["name"] for c in nlp_contacts]
-                context.store_context(from_phone, {
+                context.store_context(chat_id, {
                     "pending_intent": "onboarding",
                     "original_message": combined_text,
                     "candidates": candidates,
@@ -189,17 +200,17 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
                     today_str, default_reminder_days, combined_text,
                     interaction_date,
                 )
-                context.clear_context(from_phone)
+                context.clear_context(chat_id)
 
         # ---------------------------------------------------------------
-        # Step 12: Clear pending messages + resolved context
+        # Step 13: Clear pending messages + resolved context
         # ---------------------------------------------------------------
-        context.clear_pending_messages(from_phone)
+        context.clear_pending_messages(chat_id)
         if pending_context and intent not in ("clarify", "archive", "onboarding"):
-            context.clear_context(from_phone)
+            context.clear_context(chat_id)
 
         # ---------------------------------------------------------------
-        # Step 13: Send reply
+        # Step 14: Send reply
         # ---------------------------------------------------------------
         reply = clarification_question if needs_clarification else response_message
         if reply:
@@ -208,9 +219,9 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         return ""
 
     except Exception:
-        logger.exception("Error processing SMS from %s", from_phone)
+        logger.exception("Error processing Telegram message from chat_id %s", chat_id)
         try:
-            send_message({"phone": from_phone}, "Something went wrong. Please try again.")
+            send_message({"telegram_chat_id": chat_id}, "Something went wrong. Please try again.")
         except Exception:
-            logger.exception("Failed to send error SMS to %s", from_phone)
+            logger.exception("Failed to send error message to chat_id %s", chat_id)
         return ""

@@ -3,12 +3,22 @@
 from flask import Flask, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-import sms_handler
 import reminder_handler
+import sms_handler
+import telegram_handler
 
 app = Flask(__name__)
 # Cloud Run terminates TLS — trust X-Forwarded-Proto so request.url uses https://
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
+
+
+@app.route("/telegram-webhook", methods=["POST"])
+def telegram_webhook():
+    result = telegram_handler.handle_inbound_telegram(
+        json_data=request.get_json(force=True) or {},
+        secret_token_header=request.headers.get("X-Telegram-Bot-Api-Secret-Token"),
+    )
+    return result, 200
 
 
 @app.route("/sms-webhook", methods=["POST"])

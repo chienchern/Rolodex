@@ -38,6 +38,18 @@ def get_user_by_phone(phone: str) -> dict | None:
     return None
 
 
+def get_user_by_telegram_chat_id(chat_id: str) -> dict | None:
+    """Look up a user by Telegram chat ID. Returns user dict or None."""
+    client = _get_client()
+    spreadsheet = client.open_by_key(MASTER_SHEET_ID)
+    users_ws = spreadsheet.worksheet("Users")
+    rows = users_ws.get_all_records(numericise_ignore=["all"])
+    for row in rows:
+        if str(row.get("telegram_chat_id", "")).strip() == chat_id:
+            return row
+    return None
+
+
 def get_all_users() -> list[dict]:
     """Return all rows from the master Users tab."""
     client = _get_client()

@@ -9,7 +9,7 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
 import sheets_client
-from config import send_sms
+from messaging import send_message
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,6 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
 
     # 3. For each user, compute reminders
     for user in users:
-        phone = user["phone"]
         sheet_id = user["sheet_id"]
 
         try:
@@ -112,7 +111,7 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
             # 4. Combine reminders into single SMS and send
             if reminders:
                 body = "\n".join(reminders)
-                send_sms(to=phone, body=body)
+                send_message(user, body)
 
         except Exception:
             logger.exception("Error processing reminders for user %s", phone)
