@@ -156,3 +156,21 @@ def add_log_entry(sheet_id: str, log_data: dict) -> None:
     headers = logs_ws.row_values(1)
     row = [log_data.get(h, "") for h in headers]
     logs_ws.append_row(row)
+
+
+def get_recent_logs(sheet_id: str, limit: int = 5) -> list[dict]:
+    """Return the last `limit` log entries, most recent first."""
+    client = _get_client()
+    spreadsheet = client.open_by_key(sheet_id)
+    logs_ws = spreadsheet.worksheet("Logs")
+
+    all_values = logs_ws.get_all_values()
+    if len(all_values) <= 1:
+        return []  # only header row or empty
+
+    headers = all_values[0]
+    data_rows = all_values[1:]
+    # Take last `limit` rows, reverse for most-recent-first
+    recent = data_rows[-limit:] if len(data_rows) >= limit else data_rows
+    recent.reverse()
+    return [dict(zip(headers, row)) for row in recent]

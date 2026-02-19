@@ -1,7 +1,6 @@
 """SMS webhook handler — full inbound SMS orchestration."""
 
 import logging
-import time
 from datetime import datetime, timezone
 
 import pytz
@@ -10,7 +9,7 @@ from twilio.request_validator import RequestValidator
 import context
 import nlp
 import sheets_client
-from config import BATCH_WINDOW_SECONDS, TWILIO_AUTH_TOKEN
+from config import TWILIO_AUTH_TOKEN
 from contact_actions import (
     execute_archive,
     execute_log_interaction,
@@ -67,40 +66,16 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         sheet_id = user["sheet_id"]
 
         # ---------------------------------------------------------------
-        # Step 4: Store pending message and sleep for batch window
-        # ---------------------------------------------------------------
-        context.store_pending_message(from_phone, body, message_sid)
-        time.sleep(BATCH_WINDOW_SECONDS)
-
-        # ---------------------------------------------------------------
-        # Step 5: Check for newer messages — defer if not the last
-        # ---------------------------------------------------------------
-        pending = context.get_pending_messages(from_phone)
-        my_received_at = None
-        for msg in pending:
-            if msg.get("message_sid") == message_sid:
-                my_received_at = msg.get("received_at")
-                break
-
-        if my_received_at and context.has_newer_message(from_phone, my_received_at):
-            logger.info("Newer message exists for %s, deferring", from_phone)
-            return ""
-
-        # ---------------------------------------------------------------
-        # Step 6: Combine batched messages
-        # ---------------------------------------------------------------
-        combined_text = " ".join(msg["message_text"] for msg in pending)
-
-        # ---------------------------------------------------------------
-        # Step 7: Retrieve multi-turn context
+        # Step 4: Retrieve multi-turn context
         # ---------------------------------------------------------------
         pending_context = context.get_context(from_phone)
 
         # ---------------------------------------------------------------
-        # Step 8: Read contacts + settings from Sheets
+        # Step 5: Read contacts + settings + recent logs from Sheets
         # ---------------------------------------------------------------
         contacts = sheets_client.get_active_contacts(sheet_id)
         settings = sheets_client.get_settings(sheet_id)
+        recent_logs = sheets_client.get_recent_logs(sheet_id, limit=5)
         contact_names = [c["name"] for c in contacts]
 
         tz_name = settings.get("timezone", "America/New_York")
@@ -112,9 +87,9 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         current_date_str = now_local.strftime("%A, %B %d, %Y")
 
         # ---------------------------------------------------------------
-        # Step 9: Call Gemini NLP
+        # Step 6: Call Gemini NLP
         # ---------------------------------------------------------------
-        nlp_result = nlp.parse_sms(combined_text, contact_names, pending_context, current_date_str, contacts)
+        nlp_result = nlp.parse_sms(body, contact_names, pending_context, current_date_str, contacts, recent_logs)
 
         intent = nlp_result.get("intent", "unknown")
         nlp_contacts = nlp_result.get("contacts", [])
@@ -143,7 +118,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         if intent == "log_interaction":
             execute_log_interaction(
                 sheet_id, nlp_contacts, follow_up_date,
-                today_str, default_reminder_days, combined_text,
+                today_str, default_reminder_days, body,
                 interaction_date, contacts,
             )
 
@@ -153,12 +128,12 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         elif intent == "set_reminder":
             execute_set_reminder(
                 sheet_id, nlp_contacts, follow_up_date,
-                today_str, default_reminder_days, combined_text,
+                today_str, default_reminder_days, body,
             )
 
         elif intent == "update_contact":
             execute_update_contact(
-                sheet_id, nlp_contacts, new_name, combined_text, today_str,
+                sheet_id, nlp_contacts, new_name, body, today_str,
             )
 
         elif intent == "archive":
@@ -166,7 +141,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
                 candidates = [c["name"] for c in nlp_contacts]
                 context.store_context(from_phone, {
                     "pending_intent": "archive",
-                    "original_message": combined_text,
+                    "original_message": body,
                     "candidates": candidates,
                 })
             else:
@@ -177,7 +152,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
             candidates = [c["name"] for c in nlp_contacts]
             context.store_context(from_phone, {
                 "pending_intent": "clarify",
-                "original_message": combined_text,
+                "original_message": body,
                 "candidates": candidates,
             })
 
@@ -186,26 +161,25 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
                 candidates = [c["name"] for c in nlp_contacts]
                 context.store_context(from_phone, {
                     "pending_intent": "onboarding",
-                    "original_message": combined_text,
+                    "original_message": body,
                     "candidates": candidates,
                 })
             else:
                 execute_onboarding(
                     sheet_id, nlp_contacts, follow_up_date,
-                    today_str, default_reminder_days, combined_text,
+                    today_str, default_reminder_days, body,
                     interaction_date,
                 )
                 context.clear_context(from_phone)
 
         # ---------------------------------------------------------------
-        # Step 12: Clear pending messages + resolved context
+        # Step 9: Clear resolved context
         # ---------------------------------------------------------------
-        context.clear_pending_messages(from_phone)
         if pending_context and intent not in ("clarify", "archive", "onboarding"):
             context.clear_context(from_phone)
 
         # ---------------------------------------------------------------
-        # Step 13: Send reply
+        # Step 10: Send reply
         # ---------------------------------------------------------------
         reply = clarification_question if needs_clarification else response_message
         if reply:

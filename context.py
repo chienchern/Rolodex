@@ -1,14 +1,11 @@
-"""Firestore state management — idempotency, batch window, multi-turn context."""
+"""Firestore state management — idempotency and multi-turn context."""
 
 from datetime import datetime, timedelta, timezone
 
 from google.cloud import firestore
 
-# Import constants from config lazily to avoid circular imports
-# and allow tests to mock firestore before config loads
 IDEMPOTENCY_TTL_HOURS = 1
 CONTEXT_TTL_MINUTES = 10
-PENDING_MESSAGE_TTL_MINUTES = 10
 
 # --- Firestore client (lazy singleton) ---
 
@@ -61,63 +58,6 @@ def mark_message_processed(message_sid: str) -> None:
         "processed_at": now,
         "expire_at": now + timedelta(hours=IDEMPOTENCY_TTL_HOURS),
     })
-
-
-# ============================================================
-# Batch window — pending_messages
-# ============================================================
-
-
-def store_pending_message(user_phone: str, message_text: str, message_sid: str) -> None:
-    """Store a pending message for batch processing."""
-    client = _get_firestore_client()
-    now = datetime.now(timezone.utc)
-    client.collection("pending_messages").add({
-        "user_phone": user_phone,
-        "message_text": message_text,
-        "message_sid": message_sid,
-        "received_at": now,
-        "expire_at": now + timedelta(minutes=PENDING_MESSAGE_TTL_MINUTES),
-    })
-
-
-def get_pending_messages(user_phone: str) -> list:
-    """Get all pending messages for a user, ordered by received_at.
-
-    Returns a list of message dicts.
-    """
-    client = _get_firestore_client()
-    query = (
-        client.collection("pending_messages")
-        .where("user_phone", "==", user_phone)
-        .order_by("received_at")
-    )
-    docs = query.stream()
-    return [doc.to_dict() for doc in docs]
-
-
-def has_newer_message(user_phone: str, received_at: datetime) -> bool:
-    """Check if there is a newer pending message for this user.
-
-    Returns True if a message with received_at > the given timestamp exists.
-    """
-    client = _get_firestore_client()
-    query = (
-        client.collection("pending_messages")
-        .where("user_phone", "==", user_phone)
-        .where("received_at", ">", received_at)
-        .limit(1)
-    )
-    docs = list(query.stream())
-    return len(docs) > 0
-
-
-def clear_pending_messages(user_phone: str) -> None:
-    """Delete all pending messages for a user."""
-    client = _get_firestore_client()
-    query = client.collection("pending_messages").where("user_phone", "==", user_phone)
-    for doc in query.stream():
-        doc.reference.delete()
 
 
 # ============================================================

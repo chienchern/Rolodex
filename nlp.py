@@ -41,6 +41,8 @@ The user's active contacts are:
 
 {context_section}
 
+{recent_logs_section}
+
 The user sent this SMS:
 \"\"\"{sms_text}\"\"\"
 
@@ -94,7 +96,7 @@ The current message may be a response to that clarification, or it may be a comp
 If it's a new intent, classify it as such and ignore the pending context."""
 
 
-def _build_prompt(sms_text, contact_names, pending_context, current_date_str, contacts_data=None):
+def _build_prompt(sms_text, contact_names, pending_context, current_date_str, contacts_data=None, recent_logs=None):
     """Build the Gemini prompt string."""
     if contacts_data:
         # Include full contact details so Gemini can answer queries
@@ -121,10 +123,22 @@ def _build_prompt(sms_text, contact_names, pending_context, current_date_str, co
     else:
         context_section = "No pending conversation context."
 
+    if recent_logs:
+        log_lines = []
+        for log in recent_logs:
+            contact = log.get("contact_name", "unknown")
+            intent = log.get("intent", "unknown")
+            raw = log.get("raw_message", "")
+            log_lines.append(f'- "{raw}" ({intent}, contact: {contact})')
+        recent_logs_section = "Recent messages (most recent first):\n" + "\n".join(log_lines)
+    else:
+        recent_logs_section = "No recent conversation history."
+
     return SYSTEM_PROMPT.format(
         current_date=current_date_str,
         contact_list=contact_list,
         context_section=context_section,
+        recent_logs_section=recent_logs_section,
         sms_text=sms_text,
     )
 
@@ -206,7 +220,7 @@ def _normalize_result(parsed):
     return result
 
 
-def parse_sms(sms_text, contact_names, pending_context, current_date_str, contacts_data=None):
+def parse_sms(sms_text, contact_names, pending_context, current_date_str, contacts_data=None, recent_logs=None):
     """Parse an SMS message using Gemini and return structured intent data.
 
     Args:
@@ -216,9 +230,10 @@ def parse_sms(sms_text, contact_names, pending_context, current_date_str, contac
         current_date_str: Current date string with day-of-week
                           (e.g., "Friday, February 13, 2026").
         contacts_data: Optional list of full contact dicts for query context.
+        recent_logs: Optional list of recent log entry dicts for context.
 
     Returns:
-        Dict with keys: intent, contacts, notes, follow_up_date,
+        Dict with keys: intent, contacts, follow_up_date,
         needs_clarification, clarification_question, response_message.
 
     Raises:
@@ -232,7 +247,7 @@ def parse_sms(sms_text, contact_names, pending_context, current_date_str, contac
             "to query a contact."
         )
 
-    prompt = _build_prompt(sms_text, contact_names, pending_context, current_date_str, contacts_data)
+    prompt = _build_prompt(sms_text, contact_names, pending_context, current_date_str, contacts_data, recent_logs)
 
     # Call Gemini with structured JSON output
     try:

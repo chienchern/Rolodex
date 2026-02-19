@@ -32,8 +32,8 @@ APP_URL = os.environ.get("APP_URL", "https://rolodex-mvp-327059660015.us-central
 WEBHOOK_URL = f"{APP_URL}/sms-webhook"
 SA_KEY_PATH = os.path.join(os.path.dirname(__file__), "..", "sa-key.json")
 
-# How long to wait after posting for the batch window + processing
-PROCESSING_WAIT = 15
+# How long to wait after posting for processing
+PROCESSING_WAIT = 10
 
 # Today's date for assertions
 TODAY_STR = datetime.now().strftime("%Y-%m-%d")
@@ -308,3 +308,49 @@ class TestQuery:
         assert len(logs) == 0, f"Expected 0 log entries for a query, got {len(logs)}"
 
         print("  Test 3 PASSED")
+
+
+class TestLogBasedContext:
+    """Test 4: Pronoun resolution via log-based context.
+
+    Send 'Had coffee with Sarah', wait, then send 'Set a reminder for her in 2 weeks'.
+    Gemini should resolve 'her' to Sarah Chen using the recent log entry.
+    """
+
+    def test_pronoun_resolution_via_logs(self, gc, validator):
+        # --- Arrange ---
+        reset_seed_data(gc)
+        time.sleep(1)
+
+        # --- Act: first message ---
+        resp1 = post_sms(validator, "Had coffee with Sarah")
+        assert resp1.status_code == 200
+
+        print(f"  Waiting {PROCESSING_WAIT}s for first message processing...")
+        time.sleep(PROCESSING_WAIT)
+
+        # --- Act: second message using pronoun ---
+        resp2 = post_sms(validator, "Set a reminder for her in 2 weeks")
+        assert resp2.status_code == 200
+
+        print(f"  Waiting {PROCESSING_WAIT}s for second message processing...")
+        time.sleep(PROCESSING_WAIT)
+
+        # --- Assert: Sarah Chen's reminder_date updated ---
+        contacts = get_contacts(gc)
+        sarah = find_contact(contacts, "Sarah Chen")
+        assert sarah is not None, "Sarah Chen not found"
+
+        reminder_date = datetime.strptime(sarah["reminder_date"], "%Y-%m-%d").date()
+        expected_min = TODAY + timedelta(days=12)
+        expected_max = TODAY + timedelta(days=16)
+        assert expected_min <= reminder_date <= expected_max, \
+            f"reminder_date should be ~14 days from today, got {sarah['reminder_date']}"
+
+        # --- Assert: Logs tab has set_reminder entry for Sarah ---
+        logs = get_logs(gc)
+        reminder_logs = [l for l in logs if l["intent"] == "set_reminder" and l["contact_name"] == "Sarah Chen"]
+        assert len(reminder_logs) >= 1, \
+            f"Expected a set_reminder log for Sarah Chen, got: {[l['intent'] + ':' + l['contact_name'] for l in logs]}"
+
+        print("  Test 4 PASSED")

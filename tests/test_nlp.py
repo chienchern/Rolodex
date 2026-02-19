@@ -130,6 +130,24 @@ class TestPromptConstruction:
         prompt_str = str(call_args)
         assert "Had coffee with Sarah" in prompt_str
 
+    @patch("nlp.genai_client")
+    def test_prompt_includes_recent_logs(self, mock_client, env_vars):
+        mock_client.models.generate_content.return_value = _mock_genai_response(
+            json.dumps(SAMPLE_GEMINI_RESPONSE_LOG)
+        )
+
+        from nlp import parse_sms
+
+        recent_logs = [
+            {"date": "2026-02-12", "contact_name": "Becca", "intent": "log_interaction", "raw_message": "Had coffee with Becca"},
+        ]
+        parse_sms("Set a reminder for her in 2 weeks", CONTACT_NAMES, None, CURRENT_DATE, recent_logs=recent_logs)
+
+        call_args = mock_client.models.generate_content.call_args
+        prompt_str = str(call_args)
+        assert "Had coffee with Becca" in prompt_str
+        assert "Recent messages" in prompt_str
+
 
 # ---------------------------------------------------------------------------
 # Response parsing — happy path

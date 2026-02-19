@@ -2,7 +2,6 @@
 
 import importlib
 import sys
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -82,23 +81,17 @@ def handler(env_vars):
         mock_sheets.get_active_contacts.return_value = [c.copy() for c in SAMPLE_CONTACTS]
         mock_sheets.get_settings.return_value = SAMPLE_SETTINGS.copy()
 
+        mock_sheets.get_recent_logs.return_value = []
+
         with patch.object(telegram_handler, "context") as mock_context, \
              patch.object(telegram_handler, "sheets_client", mock_sheets), \
              patch.object(contact_actions, "sheets_client", mock_sheets), \
              patch.object(telegram_handler, "nlp") as mock_nlp, \
              patch.object(telegram_handler, "send_message") as mock_send_message, \
-             patch.object(telegram_handler, "TELEGRAM_SECRET_TOKEN", SECRET_TOKEN), \
-             patch.object(telegram_handler, "BATCH_WINDOW_SECONDS", 0), \
-             patch.object(telegram_handler, "time") as mock_time:
+             patch.object(telegram_handler, "TELEGRAM_SECRET_TOKEN", SECRET_TOKEN):
 
             mock_context.is_message_processed.return_value = False
-            mock_context.has_newer_message.return_value = False
             mock_context.get_context.return_value = None
-            mock_context.get_pending_messages.return_value = [
-                {"message_text": "Had coffee with Sarah",
-                 "message_sid": str(UPDATE_ID),
-                 "received_at": datetime.now(timezone.utc)}
-            ]
 
             mock_nlp.parse_sms.return_value = _nlp_response(
                 intent="log_interaction",
@@ -106,8 +99,6 @@ def handler(env_vars):
                 follow_up_date="2026-03-01",
                 response_message="Updated Sarah Chen.",
             )
-
-            mock_time.sleep.return_value = None
 
             class Ns:
                 pass
@@ -117,7 +108,6 @@ def handler(env_vars):
             ns.mock_sheets = mock_sheets
             ns.mock_nlp = mock_nlp
             ns.mock_send_message = mock_send_message
-            ns.mock_time = mock_time
             yield ns
 
 
@@ -230,26 +220,6 @@ class TestUserLookup:
         handler.mod.handle_inbound_telegram(SAMPLE_UPDATE, SECRET_TOKEN)
 
         handler.mock_sheets.get_user_by_telegram_chat_id.assert_called_once_with(CHAT_ID)
-
-
-# ---------------------------------------------------------------------------
-# Batch window
-# ---------------------------------------------------------------------------
-
-class TestBatchWindow:
-
-    def test_sleeps_for_batch_window(self, handler):
-        handler.mod.handle_inbound_telegram(SAMPLE_UPDATE, SECRET_TOKEN)
-
-        handler.mock_time.sleep.assert_called_once_with(0)
-
-    def test_defers_if_newer_message_exists(self, handler):
-        handler.mock_context.has_newer_message.return_value = True
-
-        result = handler.mod.handle_inbound_telegram(SAMPLE_UPDATE, SECRET_TOKEN)
-
-        assert result == ""
-        handler.mock_nlp.parse_sms.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

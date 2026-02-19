@@ -430,3 +430,54 @@ class TestRenameContact:
 
         with pytest.raises(ValueError, match="not found"):
             rename_contact("test_sheet_id", "Ghost", "Ghost Name")
+
+
+# ---------------------------------------------------------------------------
+# get_recent_logs
+# ---------------------------------------------------------------------------
+
+class TestGetRecentLogs:
+    """Tests for get_recent_logs(sheet_id, limit)."""
+
+    def test_returns_last_n_rows_most_recent_first(self, env_vars, mock_gspread_client):
+        from sheets_client import get_recent_logs
+
+        logs_ws = mock_gspread_client._worksheets["Logs"]
+        logs_ws.get_all_values.return_value = [
+            ["date", "contact_name", "intent", "raw_message"],
+            ["2026-02-10", "Sarah Chen", "log_interaction", "Had coffee with Sarah"],
+            ["2026-02-12", "Dad", "log_interaction", "Lunch with Dad"],
+            ["2026-02-14", "Mike Torres", "query", "When did I last see Mike?"],
+        ]
+
+        result = get_recent_logs("test_sheet_id", limit=2)
+
+        assert len(result) == 2
+        assert result[0]["contact_name"] == "Mike Torres"  # most recent first
+        assert result[1]["contact_name"] == "Dad"
+
+    def test_returns_empty_when_no_logs(self, env_vars, mock_gspread_client):
+        from sheets_client import get_recent_logs
+
+        logs_ws = mock_gspread_client._worksheets["Logs"]
+        logs_ws.get_all_values.return_value = [
+            ["date", "contact_name", "intent", "raw_message"],
+        ]
+
+        result = get_recent_logs("test_sheet_id")
+
+        assert result == []
+
+    def test_returns_all_when_fewer_than_limit(self, env_vars, mock_gspread_client):
+        from sheets_client import get_recent_logs
+
+        logs_ws = mock_gspread_client._worksheets["Logs"]
+        logs_ws.get_all_values.return_value = [
+            ["date", "contact_name", "intent", "raw_message"],
+            ["2026-02-10", "Sarah Chen", "log_interaction", "Had coffee with Sarah"],
+        ]
+
+        result = get_recent_logs("test_sheet_id", limit=5)
+
+        assert len(result) == 1
+        assert result[0]["raw_message"] == "Had coffee with Sarah"

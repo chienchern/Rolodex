@@ -1,11 +1,9 @@
 """Tests for sms_handler.py — SMS webhook orchestration."""
 
 import importlib
-import json
-import os
 import sys
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, call
+from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -115,6 +113,7 @@ def handler(env_vars):
         mock_sheets.get_user_by_phone.return_value = SAMPLE_USER.copy()
         mock_sheets.get_active_contacts.return_value = [c.copy() for c in SAMPLE_CONTACTS]
         mock_sheets.get_settings.return_value = SAMPLE_SETTINGS.copy()
+        mock_sheets.get_recent_logs.return_value = []
 
         with patch.object(sms_handler, "RequestValidator") as mock_rv_cls, \
              patch.object(sms_handler, "context") as mock_context, \
@@ -122,22 +121,14 @@ def handler(env_vars):
              patch.object(contact_actions, "sheets_client", mock_sheets), \
              patch.object(sms_handler, "nlp") as mock_nlp, \
              patch.object(sms_handler, "send_message") as mock_send_message, \
-             patch.object(sms_handler, "TWILIO_AUTH_TOKEN", "test_auth_token"), \
-             patch.object(sms_handler, "BATCH_WINDOW_SECONDS", 5), \
-             patch.object(sms_handler, "time") as mock_time:
+             patch.object(sms_handler, "TWILIO_AUTH_TOKEN", "test_auth_token"):
 
             mock_validator = MagicMock()
             mock_rv_cls.return_value = mock_validator
             mock_validator.validate.return_value = True
 
             mock_context.is_message_processed.return_value = False
-            mock_context.has_newer_message.return_value = False
             mock_context.get_context.return_value = None
-            mock_context.get_pending_messages.return_value = [
-                {"message_text": "Had coffee with Sarah",
-                 "message_sid": "SM_test_abc123",
-                 "received_at": datetime.now(timezone.utc)}
-            ]
 
             mock_nlp.parse_sms.return_value = _nlp_response(
                 intent="log_interaction",
@@ -145,8 +136,6 @@ def handler(env_vars):
                 follow_up_date="2026-03-01",
                 response_message="Updated Sarah Chen. I'll remind you on Sunday, Mar 1, 2026.",
             )
-
-            mock_time.sleep.return_value = None
 
             class Ns:
                 pass
@@ -157,7 +146,6 @@ def handler(env_vars):
             ns.mock_sheets = mock_sheets
             ns.mock_nlp = mock_nlp
             ns.mock_send_message = mock_send_message
-            ns.mock_time = mock_time
             ns.mock_rv_cls = mock_rv_cls
             yield ns
 
@@ -195,19 +183,6 @@ class TestUserLookup:
         handler.mock_send_message.assert_called_once()
         sms_body = handler.mock_send_message.call_args[0][1]
         assert "not" in sms_body.lower() or "error" in sms_body.lower() or "registered" in sms_body.lower()
-
-
-class TestBatchWindow:
-    def test_defers_if_newer_message_exists(self, handler):
-        handler.mock_context.has_newer_message.return_value = True
-        result = handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
-        handler.mock_nlp.parse_sms.assert_not_called()
-        handler.mock_send_message.assert_not_called()
-        handler.mock_time.sleep.assert_called()
-
-    def test_sleep_called_with_batch_window(self, handler):
-        handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
-        handler.mock_time.sleep.assert_called_with(5)
 
 
 # ===================================================================
@@ -441,10 +416,6 @@ class TestArchive:
         )
 
         form_data = {**SAMPLE_FORM_DATA, "Body": "YES", "MessageSid": "SM_confirm_123"}
-        handler.mock_context.get_pending_messages.return_value = [
-            {"message_text": "YES", "message_sid": "SM_confirm_123",
-             "received_at": datetime.now(timezone.utc)}
-        ]
         handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
 
         handler.mock_sheets.archive_contact.assert_called_once()
@@ -497,10 +468,6 @@ class TestOnboarding:
         }
 
         form_data = {**SAMPLE_FORM_DATA, "Body": "YES", "MessageSid": "SM_confirm_onboard"}
-        handler.mock_context.get_pending_messages.return_value = [
-            {"message_text": "YES", "message_sid": "SM_confirm_onboard",
-             "received_at": datetime.now(timezone.utc)}
-        ]
         handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
 
         handler.mock_sheets.add_log_entry.assert_called_once()
@@ -542,10 +509,6 @@ class TestMultiTurn:
         )
 
         form_data = {**SAMPLE_FORM_DATA, "Body": "When did I last talk to Mike?", "MessageSid": "SM_new_123"}
-        handler.mock_context.get_pending_messages.return_value = [
-            {"message_text": "When did I last talk to Mike?", "message_sid": "SM_new_123",
-             "received_at": datetime.now(timezone.utc)}
-        ]
         handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
 
         handler.mock_context.clear_context.assert_called()
@@ -569,10 +532,6 @@ class TestMultiTurn:
         )
 
         form_data = {**SAMPLE_FORM_DATA, "Body": "Doe", "MessageSid": "SM_resolve_clarify"}
-        handler.mock_context.get_pending_messages.return_value = [
-            {"message_text": "Doe", "message_sid": "SM_resolve_clarify",
-             "received_at": datetime.now(timezone.utc)}
-        ]
         handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
 
         # Should process as log_interaction (not discard context)
@@ -595,10 +554,6 @@ class TestMultiTurn:
         )
 
         form_data = {**SAMPLE_FORM_DATA, "Body": "Doe", "MessageSid": "SM_resolve_123"}
-        handler.mock_context.get_pending_messages.return_value = [
-            {"message_text": "Doe", "message_sid": "SM_resolve_123",
-             "received_at": datetime.now(timezone.utc)}
-        ]
         handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
 
         # Context should have been passed to NLP

@@ -44,12 +44,6 @@ class TestEnvVarLoading:
 class TestConstants:
     """Config defines expected constants."""
 
-    def test_batch_window_seconds(self, env_vars):
-        import config
-
-        importlib.reload(config)
-        assert config.BATCH_WINDOW_SECONDS == 5
-
     def test_context_ttl_minutes(self, env_vars):
         import config
 
