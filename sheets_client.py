@@ -7,12 +7,7 @@ from gspread.exceptions import APIError
 
 from config import GSPREAD_CREDENTIALS, MASTER_SHEET_ID
 
-# Module-level cache for client, spreadsheets, and worksheets.
-# Cloud Run workers are long-lived, so caching here avoids repeated
-# open_by_key / worksheet() API calls across requests.
 _client = None
-_spreadsheets: dict = {}
-_worksheets: dict = {}
 
 
 def _retry(fn, *args, retries=4, **kwargs):
@@ -35,27 +30,10 @@ def _get_client():
     return _client
 
 
-def _get_spreadsheet(sheet_id: str):
-    """Return a cached Spreadsheet object, opening it on first call."""
-    if sheet_id not in _spreadsheets:
-        _spreadsheets[sheet_id] = _retry(_get_client().open_by_key, sheet_id)
-    return _spreadsheets[sheet_id]
-
-
-def _get_worksheet(sheet_id: str, tab_name: str):
-    """Return a cached Worksheet object, fetching it on first call."""
-    key = (sheet_id, tab_name)
-    if key not in _worksheets:
-        _worksheets[key] = _retry(_get_spreadsheet(sheet_id).worksheet, tab_name)
-    return _worksheets[key]
-
-
 def _reset_client():
-    """Reset all caches. Used in tests."""
-    global _client, _spreadsheets, _worksheets
+    """Reset the client cache. Used in tests."""
+    global _client
     _client = None
-    _spreadsheets.clear()
-    _worksheets.clear()
 
 
 # ---------------------------------------------------------------------------
