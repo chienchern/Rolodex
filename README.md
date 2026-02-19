@@ -8,6 +8,8 @@ A personal CRM you text. Log interactions, query contact history, and get automa
 - [Example conversations](#example-conversations)
 - [Architecture](#architecture)
 - [Self-hosting setup](#self-hosting-setup)
+- [Cost](#cost)
+- [Updating](#updating)
 
 ---
 
@@ -125,3 +127,27 @@ Telegram webhook, add me as a user in the master sheet.
 ```
 
 Claude Code will run all the commands autonomously. ~10 minutes.
+
+---
+
+## Cost
+
+~$0/month for personal use — all components stay within GCP free tier limits.
+
+- **Cloud Run**: billed only during request processing, not idle time; a personal CRM generates a handful of requests per day
+- **Firestore**: free tier covers 50K reads and 20K writes per day; the daily reminder cron uses a small fraction of that
+- **Gemini API**: free tier (Flash model) comfortably covers personal usage
+- **Cloud Scheduler**: first 3 jobs free
+- **Google Sheets API**: free
+
+---
+
+## Updating
+
+Pull the latest code, then ask Claude Code to redeploy:
+
+```
+In /path/to/Rolodex, redeploy to Cloud Run. Project: [X], region: us-central1.
+```
+
+Existing environment variables on the Cloud Run service are preserved automatically.
