@@ -82,6 +82,8 @@ Cloud Scheduler ──► Cloud Run /reminder-cron ──► Telegram ──► 
 | Messaging | Telegram Bot API |
 | Scheduler | Cloud Scheduler (daily at 9am per user timezone) |
 
+For a deeper dive, see [TECH_DESIGN.md](docs/TECH_DESIGN.md).
+
 ---
 
 ## Self-hosting setup
