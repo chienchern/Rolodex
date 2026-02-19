@@ -1,5 +1,7 @@
 # Rolodex MVP Implementation Plan
 
+> **Historical artifact.** This document was written before any code existed and reflects the intended build plan. The project has since been built. Several details are now out of date: the batch window / sleep-based messaging was replaced with log-based context; `test_e2e.py` is `test_integration.py` in practice; Telegram support and `contact_actions.py` / `messaging.py` were added after initial build; and the Contacts tab column `last_contact_notes` is `last_interaction_message` in the actual schema. Refer to `TECH_DESIGN.md` for the current architecture.
+
 ## Table of Contents
 
 - [Context](#context)

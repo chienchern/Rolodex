@@ -1,5 +1,7 @@
 # Rolodex MVP — Execution Plan
 
+> **Historical artifact.** This document was written before any code existed and describes how the project was planned to be built autonomously. The project has since been fully built and deployed. The "Current state: Only docs + .env. No code, no infrastructure." description on line 19 is no longer accurate. Refer to `TECH_DESIGN.md` for the current architecture.
+
 ## Table of Contents
 
 - [Context](#context)
