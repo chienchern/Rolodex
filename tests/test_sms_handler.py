@@ -53,18 +53,33 @@ SAMPLE_SETTINGS = {
 
 
 def _nlp_response(intent, contacts=None, notes=None, follow_up_date=None,
+                  interaction_date=None,
                   needs_clarification=False, clarification_question=None,
-                  response_message="Done."):
-    """Build a mock NLP response dict."""
-    return {
+                  response_message="Done.", **extra):
+    """Build a mock NLP response with only intent-relevant fields."""
+    result = {
         "intent": intent,
         "contacts": contacts or [],
-        "notes": notes,
-        "follow_up_date": follow_up_date,
-        "needs_clarification": needs_clarification,
-        "clarification_question": clarification_question,
         "response_message": response_message,
     }
+    if intent == "log_interaction":
+        result["notes"] = notes
+        result["interaction_date"] = interaction_date
+        result["follow_up_date"] = follow_up_date
+    elif intent == "set_reminder":
+        result["notes"] = notes
+        result["follow_up_date"] = follow_up_date
+    elif intent in ("archive", "clarify"):
+        result["needs_clarification"] = needs_clarification
+        result["clarification_question"] = clarification_question
+    elif intent == "onboarding":
+        result["notes"] = notes
+        result["interaction_date"] = interaction_date
+        result["follow_up_date"] = follow_up_date
+        result["needs_clarification"] = needs_clarification
+        result["clarification_question"] = clarification_question
+    result.update(extra)
+    return result
 
 
 # ---------------------------------------------------------------------------

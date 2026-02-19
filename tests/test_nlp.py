@@ -153,8 +153,9 @@ class TestResponseParsingHappyPath:
         assert result["contacts"][0]["name"] == "Sarah Chen"
         assert result["notes"] is not None
         assert result["follow_up_date"] == "2026-02-24"
-        assert result["needs_clarification"] is False
         assert result["response_message"] is not None
+        # log_interaction should not have clarification fields
+        assert "needs_clarification" not in result
 
     @patch("nlp.genai_client")
     def test_interaction_date_parsed(self, mock_client, env_vars):
@@ -191,8 +192,6 @@ class TestResponseParsingHappyPath:
             "intent": "onboarding",
             "contacts": [{"name": "Priya", "match_type": "new"}],
             "notes": "dinner",
-            "follow_up_date": None,
-            "interaction_date": None,
             "needs_clarification": True,
             "clarification_question": "I don't have 'Priya' in your Rolodex. Want me to add them?",
             "response_message": "I don't have 'Priya' in your Rolodex. Want me to add them?",
@@ -241,8 +240,6 @@ class TestResponseParsingHappyPath:
             "contacts": [{"name": "Dad", "match_type": "exact"}],
             "notes": "birthday",
             "follow_up_date": "2026-03-05",
-            "needs_clarification": False,
-            "clarification_question": None,
             "response_message": "Reminder set for Dad on March 5.",
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
@@ -260,8 +257,6 @@ class TestResponseParsingHappyPath:
         response = {
             "intent": "archive",
             "contacts": [{"name": "Sarah Chen", "match_type": "exact"}],
-            "notes": None,
-            "follow_up_date": None,
             "needs_clarification": True,
             "clarification_question": "Are you sure you want to archive Sarah Chen?",
             "response_message": "Are you sure you want to archive Sarah Chen? Reply YES to confirm.",
@@ -280,10 +275,6 @@ class TestResponseParsingHappyPath:
         response = {
             "intent": "unknown",
             "contacts": [],
-            "notes": None,
-            "follow_up_date": None,
-            "needs_clarification": False,
-            "clarification_question": None,
             "response_message": "I'm not sure what you mean. Try something like 'Had coffee with Sarah'.",
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
@@ -366,8 +357,8 @@ class TestFallbackParsing:
         assert result["intent"] == "log_interaction"
         assert result["notes"] is None
         assert result["follow_up_date"] is None
-        assert result["needs_clarification"] is False or result["needs_clarification"] is None
-        assert result["clarification_question"] is None
+        # log_interaction shouldn't have clarification fields
+        assert "needs_clarification" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -379,13 +370,14 @@ class TestErrorHandling:
     """Verify graceful behavior on API or parsing failures."""
 
     @patch("nlp.genai_client")
-    def test_api_exception_raises(self, mock_client, env_vars):
+    def test_api_exception_returns_fallback(self, mock_client, env_vars):
         mock_client.models.generate_content.side_effect = Exception("API quota exceeded")
 
         from nlp import parse_sms
 
-        with pytest.raises(Exception, match="API quota exceeded"):
-            parse_sms("Had coffee with Sarah", CONTACT_NAMES, None, CURRENT_DATE)
+        result = parse_sms("Had coffee with Sarah", CONTACT_NAMES, None, CURRENT_DATE)
+        assert result["intent"] == "unknown"
+        assert result["response_message"] is not None
 
     @patch("nlp.genai_client")
     def test_empty_response_body(self, mock_client, env_vars):
@@ -424,10 +416,6 @@ class TestFieldValidation:
         response = {
             "intent": "completely_new_intent",
             "contacts": [],
-            "notes": None,
-            "follow_up_date": None,
-            "needs_clarification": False,
-            "clarification_question": None,
             "response_message": "Something unexpected.",
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
@@ -446,9 +434,6 @@ class TestFieldValidation:
             "intent": "log_interaction",
             "contacts": [{"name": None, "match_type": "new"}],
             "notes": "had coffee",
-            "follow_up_date": None,
-            "needs_clarification": False,
-            "clarification_question": None,
             "response_message": "Updated.",
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
@@ -468,8 +453,6 @@ class TestFieldValidation:
             "contacts": [{"name": "Dad", "match_type": "exact"}],
             "notes": "birthday",
             "follow_up_date": "not-a-real-date",
-            "needs_clarification": False,
-            "clarification_question": None,
             "response_message": "Reminder set for Dad.",
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(

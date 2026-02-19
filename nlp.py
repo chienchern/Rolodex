@@ -1,9 +1,12 @@
 """Gemini NLP integration — parse SMS text into structured intent."""
 
 import json
+import logging
 import re
 
 from google import genai
+
+logger = logging.getLogger(__name__)
 from google.genai import types
 
 from config import GEMINI_API_KEY
@@ -40,15 +43,22 @@ The user's active contacts are:
 The user sent this SMS:
 \"\"\"{sms_text}\"\"\"
 
-Classify the intent and return a JSON object with EXACTLY these fields:
+Classify the intent and return a JSON object. Include the common fields for ALL intents, \
+plus the intent-specific fields listed below. Do NOT include fields that aren't relevant to the intent.
+
+Common fields (always include):
 - "intent": one of "log_interaction", "query", "set_reminder", "archive", "onboarding", "clarify", "unknown"
 - "contacts": array of objects with "name" (string) and "match_type" ("exact", "fuzzy", "new", "ambiguous")
-- "notes": string with relevant context (what was discussed, reason for reminder, etc.) or null
-- "interaction_date": ISO date string (YYYY-MM-DD) for when the interaction occurred, or null. Only for "log_interaction" intent. If the user references a past date/day (e.g., "met John yesterday", "saw Sarah on Friday"), parse it relative to the current date. If no date is referenced, set to the current date.
-- "follow_up_date": ISO date string (YYYY-MM-DD) for the next follow-up, or null. Only set when user explicitly mentions timing (e.g., "follow up in 3 weeks"). Always relative to today's date, not the interaction date. For "set_reminder" with no timing specified, set to null.
-- "needs_clarification": boolean — true if the message is ambiguous
-- "clarification_question": string question to ask the user, or null
 - "response_message": string SMS reply to send to the user
+
+Intent-specific fields:
+- log_interaction: "notes" (string — what was discussed), "interaction_date" (ISO YYYY-MM-DD — when it happened; parse relative dates like "yesterday"/"Friday" from current date; default to current date if not mentioned), "follow_up_date" (ISO YYYY-MM-DD — only if user explicitly mentions timing, else omit)
+- query: (no extra fields)
+- set_reminder: "notes" (string or null), "follow_up_date" (ISO YYYY-MM-DD — the requested reminder date; null if no timing specified)
+- archive: "needs_clarification" (boolean), "clarification_question" (string)
+- onboarding: "notes" (string or null), "interaction_date" (ISO YYYY-MM-DD or null), "follow_up_date" (ISO YYYY-MM-DD or null), "needs_clarification" (boolean), "clarification_question" (string)
+- clarify: "needs_clarification" (always true), "clarification_question" (string)
+- unknown: (no extra fields)
 
 Rules:
 - Match contact names from the provided list. Use "fuzzy" match_type for partial/nickname matches.
@@ -150,36 +160,45 @@ def _make_fallback_response(message=None):
     return {
         "intent": "unknown",
         "contacts": [],
-        "notes": None,
-        "interaction_date": None,
-        "follow_up_date": None,
-        "needs_clarification": False,
-        "clarification_question": None,
         "response_message": message or "I couldn't understand that. Try something like 'Had coffee with Sarah'.",
     }
 
 
 def _normalize_result(parsed):
-    """Normalize and validate the parsed result, filling in defaults."""
-    # Ensure all expected fields exist with defaults
+    """Normalize and validate the parsed result, including only intent-relevant fields."""
+    intent = parsed.get("intent")
+    if intent not in VALID_INTENTS:
+        intent = "unknown"
+
+    contacts = parsed.get("contacts", [])
+    if not isinstance(contacts, list):
+        contacts = []
+
+    # Common fields for all intents
     result = {
-        "intent": parsed.get("intent"),
-        "contacts": parsed.get("contacts", []),
-        "notes": parsed.get("notes"),
-        "interaction_date": parsed.get("interaction_date"),
-        "follow_up_date": parsed.get("follow_up_date"),
-        "needs_clarification": parsed.get("needs_clarification", False),
-        "clarification_question": parsed.get("clarification_question"),
+        "intent": intent,
+        "contacts": contacts,
         "response_message": parsed.get("response_message"),
     }
 
-    # Validate intent
-    if result["intent"] not in VALID_INTENTS:
-        result["intent"] = "unknown"
-
-    # Ensure contacts is a list
-    if not isinstance(result["contacts"], list):
-        result["contacts"] = []
+    # Intent-specific fields
+    if intent == "log_interaction":
+        result["notes"] = parsed.get("notes")
+        result["interaction_date"] = parsed.get("interaction_date")
+        result["follow_up_date"] = parsed.get("follow_up_date")
+    elif intent == "set_reminder":
+        result["notes"] = parsed.get("notes")
+        result["follow_up_date"] = parsed.get("follow_up_date")
+    elif intent in ("archive", "clarify"):
+        result["needs_clarification"] = parsed.get("needs_clarification", False)
+        result["clarification_question"] = parsed.get("clarification_question")
+    elif intent == "onboarding":
+        result["notes"] = parsed.get("notes")
+        result["interaction_date"] = parsed.get("interaction_date")
+        result["follow_up_date"] = parsed.get("follow_up_date")
+        result["needs_clarification"] = parsed.get("needs_clarification", False)
+        result["clarification_question"] = parsed.get("clarification_question")
+    # query and unknown: no extra fields
 
     return result
 

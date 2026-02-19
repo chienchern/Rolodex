@@ -231,19 +231,14 @@ SAMPLE_GEMINI_RESPONSE_LOG = {
     "intent": "log_interaction",
     "contacts": [{"name": "Sarah Chen", "match_type": "fuzzy"}],
     "notes": "had coffee, she's launching her startup next month",
+    "interaction_date": None,
     "follow_up_date": "2026-02-24",
-    "needs_clarification": False,
-    "clarification_question": None,
     "response_message": "Updated Sarah Chen. I'll remind you to reach out on Tuesday, Feb 24, 2026.",
 }
 
 SAMPLE_GEMINI_RESPONSE_QUERY = {
     "intent": "query",
     "contacts": [{"name": "Mike Torres", "match_type": "exact"}],
-    "notes": None,
-    "follow_up_date": None,
-    "needs_clarification": False,
-    "clarification_question": None,
     "response_message": "You last talked to Mike Torres on Feb 3, 2026. Notes: lunch, new job at Google.",
 }
 
@@ -253,8 +248,6 @@ SAMPLE_GEMINI_RESPONSE_CLARIFY = {
         {"name": "John Smith", "match_type": "ambiguous"},
         {"name": "John Doe", "match_type": "ambiguous"},
     ],
-    "notes": None,
-    "follow_up_date": None,
     "needs_clarification": True,
     "clarification_question": "Which John did you mean? John Smith or John Doe?",
     "response_message": "Which John did you mean? John Smith or John Doe?",
