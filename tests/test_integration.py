@@ -76,6 +76,13 @@ SEED_CONTACTS = [
         "last_interaction_message": "drinks, he's moving to Austin",
         "status": "active",
     },
+    {
+        "name": "Becca",
+        "reminder_date": "2026-03-15",
+        "last_contact_date": "2026-02-10",
+        "last_interaction_message": "dinner, talked about her new job",
+        "status": "active",
+    },
 ]
 
 CONTACTS_HEADERS = ["name", "reminder_date", "last_contact_date", "last_interaction_message", "status"]
@@ -354,3 +361,47 @@ class TestLogBasedContext:
             f"Expected a set_reminder log for Sarah Chen, got: {[l['intent'] + ':' + l['contact_name'] for l in logs]}"
 
         print("  Test 4 PASSED")
+
+
+class TestUpdateContact:
+    """Test 5: 'Rename Becca to Becca Zhou' -- update_contact intent."""
+
+    def test_rename_contact(self, gc, validator):
+        # --- Arrange ---
+        reset_seed_data(gc)
+        time.sleep(1)
+
+        # Verify Becca exists before rename
+        contacts_before = get_contacts(gc)
+        becca = find_contact(contacts_before, "Becca")
+        assert becca is not None, "Becca should exist in seed data"
+        original_reminder = becca["reminder_date"]
+        original_last_contact = becca["last_contact_date"]
+
+        # --- Act ---
+        resp = post_sms(validator, "Rename Becca to Becca Zhou")
+        assert resp.status_code == 200
+
+        print(f"  Waiting {PROCESSING_WAIT}s for processing...")
+        time.sleep(PROCESSING_WAIT)
+
+        # --- Assert: Contacts tab ---
+        contacts = get_contacts(gc)
+        old_becca = find_contact(contacts, "Becca")
+        new_becca = find_contact(contacts, "Becca Zhou")
+        assert old_becca is None, "Old name 'Becca' should no longer exist"
+        assert new_becca is not None, "'Becca Zhou' should exist after rename"
+
+        # Data should be preserved
+        assert new_becca["reminder_date"] == original_reminder, \
+            f"reminder_date should be preserved: {new_becca['reminder_date']}"
+        assert new_becca["last_contact_date"] == original_last_contact, \
+            f"last_contact_date should be preserved: {new_becca['last_contact_date']}"
+
+        # --- Assert: Logs tab ---
+        logs = get_logs(gc)
+        rename_logs = [l for l in logs if l["intent"] == "update_contact" and l["contact_name"] == "Becca Zhou"]
+        assert len(rename_logs) >= 1, \
+            f"Expected an update_contact log for Becca Zhou, got: {[l['intent'] + ':' + l['contact_name'] for l in logs]}"
+
+        print("  Test 5 PASSED")
