@@ -45,41 +45,41 @@ SEED_CONTACTS = [
         "name": "Sarah Chen",
         "reminder_date": "2026-02-20",
         "last_contact_date": "2026-01-15",
-        "last_contact_notes": "discussed her startup",
+        "last_interaction_message": "discussed her startup",
         "status": "active",
     },
     {
         "name": "Dad",
         "reminder_date": "2026-03-01",
         "last_contact_date": "2026-01-20",
-        "last_contact_notes": "called him about retirement",
+        "last_interaction_message": "called him about retirement",
         "status": "active",
     },
     {
         "name": "Mike Torres",
         "reminder_date": "",
         "last_contact_date": "2026-02-03",
-        "last_contact_notes": "lunch, new job at Google",
+        "last_interaction_message": "lunch, new job at Google",
         "status": "active",
     },
     {
         "name": "John Smith",
         "reminder_date": "2026-02-25",
         "last_contact_date": "2026-02-01",
-        "last_contact_notes": "coffee, discussed travel plans",
+        "last_interaction_message": "coffee, discussed travel plans",
         "status": "active",
     },
     {
         "name": "John Doe",
         "reminder_date": "2026-03-10",
         "last_contact_date": "2026-01-30",
-        "last_contact_notes": "drinks, he's moving to Austin",
+        "last_interaction_message": "drinks, he's moving to Austin",
         "status": "active",
     },
 ]
 
-CONTACTS_HEADERS = ["name", "reminder_date", "last_contact_date", "last_contact_notes", "status"]
-LOGS_HEADERS = ["date", "contact_name", "intent", "notes", "raw_message"]
+CONTACTS_HEADERS = ["name", "reminder_date", "last_contact_date", "last_interaction_message", "status"]
+LOGS_HEADERS = ["date", "contact_name", "intent", "raw_message"]
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -111,7 +111,7 @@ def reset_seed_data(gc):
     # --- Reset Logs tab ---
     logs_ws = spreadsheet.worksheet("Logs")
     logs_ws.clear()
-    logs_ws.update(values=[LOGS_HEADERS], range_name="A1")
+    logs_ws.update(values=[LOGS_HEADERS], range_name="A1:D1")
 
     # Small delay for Sheets API propagation
     time.sleep(2)
@@ -193,8 +193,8 @@ class TestLogInteraction:
         assert sarah is not None, "Sarah Chen not found in contacts"
         assert sarah["last_contact_date"] == TODAY_STR, \
             f"last_contact_date should be {TODAY_STR}, got {sarah['last_contact_date']}"
-        assert "coffee" in sarah["last_contact_notes"].lower(), \
-            f"last_contact_notes should contain 'coffee': {sarah['last_contact_notes']}"
+        assert "coffee" in sarah["last_interaction_message"].lower(), \
+            f"last_interaction_message should contain 'coffee': {sarah['last_interaction_message']}"
 
         # reminder_date should be preserved (Sarah had existing reminder_date="2026-02-20")
         # since no explicit timing was specified in the SMS
@@ -219,8 +219,8 @@ class TestLogInteraction:
         log = sarah_logs[0]
         assert log["intent"] == "log_interaction", \
             f"Log intent should be 'log_interaction', got {log['intent']}"
-        assert "coffee" in log["notes"].lower(), \
-            f"Log notes should contain 'coffee': {log['notes']}"
+        assert "coffee" in log["raw_message"].lower(), \
+            f"Log raw_message should contain 'coffee': {log['raw_message']}"
 
         print("  Test 1 PASSED")
 
@@ -246,8 +246,8 @@ class TestLogWithTiming:
         assert dad is not None, "Dad not found in contacts"
         assert dad["last_contact_date"] == TODAY_STR, \
             f"last_contact_date should be {TODAY_STR}, got {dad['last_contact_date']}"
-        assert "lunch" in dad["last_contact_notes"].lower(), \
-            f"last_contact_notes should contain 'lunch': {dad['last_contact_notes']}"
+        assert "lunch" in dad["last_interaction_message"].lower(), \
+            f"last_interaction_message should contain 'lunch': {dad['last_interaction_message']}"
 
         # reminder_date should be ~21 days from today (allow +/- 2 days for timezone/rounding)
         reminder_date = datetime.strptime(dad["reminder_date"], "%Y-%m-%d").date()
@@ -271,8 +271,8 @@ class TestLogWithTiming:
         dad_logs = [l for l in logs if l["contact_name"] == "Dad"]
         assert len(dad_logs) >= 1, "Expected a log entry for Dad"
         log = dad_logs[0]
-        assert "lunch" in log["notes"].lower(), \
-            f"Log notes should contain 'lunch': {log['notes']}"
+        assert "lunch" in log["raw_message"].lower(), \
+            f"Log raw_message should contain 'lunch': {log['raw_message']}"
 
         print("  Test 2 PASSED")
 

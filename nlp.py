@@ -53,12 +53,12 @@ Common fields (always include):
 - "response_message": string SMS reply to send to the user
 
 Intent-specific fields:
-- log_interaction: "notes" (string — what was discussed), "interaction_date" (ISO YYYY-MM-DD — when it happened; parse relative dates like "yesterday"/"Friday" from current date; default to current date if not mentioned), "follow_up_date" (ISO YYYY-MM-DD — only if user explicitly mentions timing, else omit)
+- log_interaction: "interaction_date" (ISO YYYY-MM-DD — when it happened; parse relative dates like "yesterday"/"Friday" from current date; default to current date if not mentioned), "follow_up_date" (ISO YYYY-MM-DD — only if user explicitly mentions timing, else omit)
 - query: (no extra fields)
-- set_reminder: "notes" (string or null), "follow_up_date" (ISO YYYY-MM-DD — the requested reminder date; null if no timing specified)
+- set_reminder: "follow_up_date" (ISO YYYY-MM-DD — the requested reminder date; null if no timing specified)
 - update_contact: "new_name" (string — the new name for the contact). The existing name goes in "contacts".
 - archive: "needs_clarification" (boolean), "clarification_question" (string)
-- onboarding: "notes" (string or null), "interaction_date" (ISO YYYY-MM-DD or null), "follow_up_date" (ISO YYYY-MM-DD or null), "needs_clarification" (boolean), "clarification_question" (string)
+- onboarding: "interaction_date" (ISO YYYY-MM-DD or null), "follow_up_date" (ISO YYYY-MM-DD or null), "needs_clarification" (boolean), "clarification_question" (string)
 - clarify: "needs_clarification" (always true), "clarification_question" (string)
 - unknown: (no extra fields)
 
@@ -66,8 +66,8 @@ Rules:
 - Match contact names from the provided list. Use "fuzzy" match_type for partial/nickname matches.
 - If a name matches multiple contacts, set intent to "clarify", needs_clarification to true, and list all candidates.
 - If a contact name is not in the list, use match_type "new" and set intent to "onboarding" with needs_clarification true. Ask the user to confirm adding the new contact.
-- For "log_interaction": extract concise notes about the *topic* of the interaction — not the raw message. Examples: "Had coffee with Becca" → notes: "coffee". "Caught up with Mike about his new job" → notes: "his new job". Parse interaction_date from the message. Compute follow_up_date only if the user explicitly mentions timing.
-- For "query": write a natural, conversational summary in response_message — like a text from a helpful friend. Example: "You last caught up with Becca on Wednesday, Feb 18 — you talked about her new job at Hinge. Next follow-up is set for Wednesday, Mar 18." Do NOT use labels like "Discussed:" or "Last contact:". If last_contact_notes is empty, just mention the date. No sheet updates needed.
+- For "log_interaction": Parse interaction_date from the message. Compute follow_up_date only if the user explicitly mentions timing.
+- For "query": write a natural, conversational summary in response_message — like a text from a helpful friend. Example: "You last caught up with Becca on Wednesday, Feb 18 — you talked about her new job at Hinge. Next follow-up is set for Wednesday, Mar 18." Do NOT use labels like "Discussed:" or "Last contact:". If last_interaction_message is empty, just mention the date. No sheet updates needed.
 - For "set_reminder": set follow_up_date to the requested date. If no timing specified, set follow_up_date to null.
 - For "update_contact": used when the user wants to rename a contact (e.g., "Rename Becca to Becca Zhou", "Change Mike's name to Mike Torres"). Return the existing name in contacts and the new name in "new_name".
 - For "archive": set needs_clarification to true to confirm with the user.
@@ -103,8 +103,8 @@ def _build_prompt(sms_text, contact_names, pending_context, current_date_str, co
             parts = [c.get("name", "")]
             if c.get("last_contact_date"):
                 parts.append(f"last contact: {c['last_contact_date']}")
-            if c.get("last_contact_notes"):
-                parts.append(f"notes: {c['last_contact_notes']}")
+            if c.get("last_interaction_message"):
+                parts.append(f"last message: {c['last_interaction_message']}")
             if c.get("reminder_date"):
                 parts.append(f"reminder: {c['reminder_date']}")
             lines.append("- " + " | ".join(parts))
@@ -187,11 +187,9 @@ def _normalize_result(parsed):
 
     # Intent-specific fields
     if intent == "log_interaction":
-        result["notes"] = parsed.get("notes")
         result["interaction_date"] = parsed.get("interaction_date")
         result["follow_up_date"] = parsed.get("follow_up_date")
     elif intent == "set_reminder":
-        result["notes"] = parsed.get("notes")
         result["follow_up_date"] = parsed.get("follow_up_date")
     elif intent == "update_contact":
         result["new_name"] = parsed.get("new_name")
@@ -199,7 +197,6 @@ def _normalize_result(parsed):
         result["needs_clarification"] = parsed.get("needs_clarification", False)
         result["clarification_question"] = parsed.get("clarification_question")
     elif intent == "onboarding":
-        result["notes"] = parsed.get("notes")
         result["interaction_date"] = parsed.get("interaction_date")
         result["follow_up_date"] = parsed.get("follow_up_date")
         result["needs_clarification"] = parsed.get("needs_clarification", False)

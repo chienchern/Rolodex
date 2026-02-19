@@ -118,7 +118,6 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
 
         intent = nlp_result.get("intent", "unknown")
         nlp_contacts = nlp_result.get("contacts", [])
-        notes = nlp_result.get("notes")
         interaction_date = nlp_result.get("interaction_date")
         follow_up_date = nlp_result.get("follow_up_date")
         new_name = nlp_result.get("new_name")
@@ -143,7 +142,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
 
         if intent == "log_interaction":
             execute_log_interaction(
-                sheet_id, nlp_contacts, notes, follow_up_date,
+                sheet_id, nlp_contacts, follow_up_date,
                 today_str, default_reminder_days, combined_text,
                 interaction_date, contacts,
             )
@@ -153,7 +152,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
 
         elif intent == "set_reminder":
             execute_set_reminder(
-                sheet_id, nlp_contacts, notes, follow_up_date,
+                sheet_id, nlp_contacts, follow_up_date,
                 today_str, default_reminder_days, combined_text,
             )
 
@@ -192,7 +191,7 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
                 })
             else:
                 execute_onboarding(
-                    sheet_id, nlp_contacts, notes, follow_up_date,
+                    sheet_id, nlp_contacts, follow_up_date,
                     today_str, default_reminder_days, combined_text,
                     interaction_date,
                 )

@@ -159,7 +159,7 @@ class TestGetActiveContacts:
             "name": "Old Friend",
             "reminder_date": "",
             "last_contact_date": "2025-06-01",
-            "last_contact_notes": "haven't talked in a while",
+            "last_interaction_message": "haven't talked in a while",
             "status": "archived",
         }
         all_contacts.append(archived)
@@ -182,7 +182,7 @@ class TestGetActiveContacts:
         assert "name" in contact
         assert "reminder_date" in contact
         assert "last_contact_date" in contact
-        assert "last_contact_notes" in contact
+        assert "last_interaction_message" in contact
         assert "status" in contact
 
     def test_returns_empty_when_no_active(self, env_vars, mock_gspread_client):
@@ -194,7 +194,7 @@ class TestGetActiveContacts:
                 "name": "Archived",
                 "reminder_date": "",
                 "last_contact_date": "2025-01-01",
-                "last_contact_notes": "",
+                "last_interaction_message": "",
                 "status": "archived",
             }
         ]
@@ -241,12 +241,12 @@ class TestUpdateContact:
 
         contacts_ws = mock_gspread_client._worksheets["Contacts"]
         contacts_ws.find.return_value = _cell(row=2, col=1, value="Sarah Chen")
-        headers = ["name", "reminder_date", "last_contact_date", "last_contact_notes", "status"]
+        headers = ["name", "reminder_date", "last_contact_date", "last_interaction_message", "status"]
         contacts_ws.row_values.return_value = headers
 
         updates = {
             "last_contact_date": "2026-02-13",
-            "last_contact_notes": "had coffee",
+            "last_interaction_message": "had coffee",
         }
         update_contact("test_sheet_id", "Sarah Chen", updates)
 
@@ -266,7 +266,7 @@ class TestUpdateContact:
 
         contacts_ws = mock_gspread_client._worksheets["Contacts"]
         contacts_ws.find.return_value = _cell(row=3, col=1, value="Dad")
-        headers = ["name", "reminder_date", "last_contact_date", "last_contact_notes", "status"]
+        headers = ["name", "reminder_date", "last_contact_date", "last_interaction_message", "status"]
         contacts_ws.row_values.return_value = headers
 
         update_contact("test_sheet_id", "Dad", {"reminder_date": "2026-03-15"})
@@ -286,14 +286,14 @@ class TestAddContact:
         from sheets_client import add_contact
 
         contacts_ws = mock_gspread_client._worksheets["Contacts"]
-        headers = ["name", "reminder_date", "last_contact_date", "last_contact_notes", "status"]
+        headers = ["name", "reminder_date", "last_contact_date", "last_interaction_message", "status"]
         contacts_ws.row_values.return_value = headers
 
         contact_data = {
             "name": "New Person",
             "reminder_date": "2026-03-01",
             "last_contact_date": "2026-02-13",
-            "last_contact_notes": "met at conference",
+            "last_interaction_message": "met at conference",
             "status": "active",
         }
         add_contact("test_sheet_id", contact_data)
@@ -307,7 +307,7 @@ class TestAddContact:
         from sheets_client import add_contact
 
         contacts_ws = mock_gspread_client._worksheets["Contacts"]
-        headers = ["name", "reminder_date", "last_contact_date", "last_contact_notes", "status"]
+        headers = ["name", "reminder_date", "last_contact_date", "last_interaction_message", "status"]
         contacts_ws.row_values.return_value = headers
 
         contact_data = {
@@ -315,7 +315,7 @@ class TestAddContact:
             "status": "active",
             "reminder_date": "2026-04-01",
             "last_contact_date": "2026-02-13",
-            "last_contact_notes": "brunch",
+            "last_interaction_message": "brunch",
         }
         add_contact("test_sheet_id", contact_data)
 
@@ -334,14 +334,13 @@ class TestAddLogEntry:
         from sheets_client import add_log_entry
 
         logs_ws = mock_gspread_client._worksheets["Logs"]
-        headers = ["date", "contact_name", "intent", "notes", "raw_message"]
+        headers = ["date", "contact_name", "intent", "raw_message"]
         logs_ws.row_values.return_value = headers
 
         log_data = {
             "date": "2026-02-13",
             "contact_name": "Sarah Chen",
             "intent": "log_interaction",
-            "notes": "had coffee",
             "raw_message": "Had coffee with Sarah",
         }
         add_log_entry("test_sheet_id", log_data)
@@ -355,13 +354,12 @@ class TestAddLogEntry:
         from sheets_client import add_log_entry
 
         logs_ws = mock_gspread_client._worksheets["Logs"]
-        headers = ["date", "contact_name", "intent", "notes", "raw_message"]
+        headers = ["date", "contact_name", "intent", "raw_message"]
         logs_ws.row_values.return_value = headers
 
         log_data = {
             "raw_message": "Had coffee with Sarah",
             "date": "2026-02-13",
-            "notes": "had coffee",
             "contact_name": "Sarah Chen",
             "intent": "log_interaction",
         }
@@ -369,7 +367,7 @@ class TestAddLogEntry:
 
         appended = logs_ws.append_row.call_args[0][0]
         assert appended == [
-            "2026-02-13", "Sarah Chen", "log_interaction", "had coffee",
+            "2026-02-13", "Sarah Chen", "log_interaction",
             "Had coffee with Sarah",
         ]
 
@@ -386,7 +384,7 @@ class TestArchiveContact:
 
         contacts_ws = mock_gspread_client._worksheets["Contacts"]
         contacts_ws.find.return_value = _cell(row=2, col=1, value="Sarah Chen")
-        headers = ["name", "reminder_date", "last_contact_date", "last_contact_notes", "status"]
+        headers = ["name", "reminder_date", "last_contact_date", "last_interaction_message", "status"]
         contacts_ws.row_values.return_value = headers
 
         archive_contact("test_sheet_id", "Sarah Chen")
@@ -416,7 +414,7 @@ class TestRenameContact:
 
         contacts_ws = mock_gspread_client._worksheets["Contacts"]
         contacts_ws.find.return_value = _cell(row=2, col=1, value="Becca")
-        headers = ["name", "reminder_date", "last_contact_date", "last_contact_notes", "status"]
+        headers = ["name", "reminder_date", "last_contact_date", "last_interaction_message", "status"]
         contacts_ws.row_values.return_value = headers
 
         rename_contact("test_sheet_id", "Becca", "Becca Zhou")

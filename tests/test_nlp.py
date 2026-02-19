@@ -151,11 +151,12 @@ class TestResponseParsingHappyPath:
 
         assert result["intent"] == "log_interaction"
         assert result["contacts"][0]["name"] == "Sarah Chen"
-        assert result["notes"] is not None
         assert result["follow_up_date"] == "2026-02-24"
         assert result["response_message"] is not None
         # log_interaction should not have clarification fields
         assert "needs_clarification" not in result
+        # notes field should not be present
+        assert "notes" not in result
 
     @patch("nlp.genai_client")
     def test_interaction_date_parsed(self, mock_client, env_vars):
@@ -191,7 +192,6 @@ class TestResponseParsingHappyPath:
         response = {
             "intent": "onboarding",
             "contacts": [{"name": "Priya", "match_type": "new"}],
-            "notes": "dinner",
             "needs_clarification": True,
             "clarification_question": "I don't have 'Priya' in your Rolodex. Want me to add them?",
             "response_message": "I don't have 'Priya' in your Rolodex. Want me to add them?",
@@ -238,7 +238,6 @@ class TestResponseParsingHappyPath:
         response = {
             "intent": "set_reminder",
             "contacts": [{"name": "Dad", "match_type": "exact"}],
-            "notes": "birthday",
             "follow_up_date": "2026-03-05",
             "response_message": "Reminder set for Dad on March 5.",
         }
@@ -355,10 +354,10 @@ class TestFallbackParsing:
 
         result = parse_sms("Had coffee with Sarah", CONTACT_NAMES, None, CURRENT_DATE)
         assert result["intent"] == "log_interaction"
-        assert result["notes"] is None
         assert result["follow_up_date"] is None
-        # log_interaction shouldn't have clarification fields
+        # log_interaction shouldn't have clarification or notes fields
         assert "needs_clarification" not in result
+        assert "notes" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +432,6 @@ class TestFieldValidation:
         response = {
             "intent": "log_interaction",
             "contacts": [{"name": None, "match_type": "new"}],
-            "notes": "had coffee",
             "response_message": "Updated.",
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
@@ -451,7 +449,6 @@ class TestFieldValidation:
         response = {
             "intent": "set_reminder",
             "contacts": [{"name": "Dad", "match_type": "exact"}],
-            "notes": "birthday",
             "follow_up_date": "not-a-real-date",
             "response_message": "Reminder set for Dad.",
         }

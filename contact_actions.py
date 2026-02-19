@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import sheets_client
 
 
-def execute_log_interaction(sheet_id, nlp_contacts, notes, follow_up_date,
+def execute_log_interaction(sheet_id, nlp_contacts, follow_up_date,
                              today_str, default_reminder_days, raw_message,
                              interaction_date=None, active_contacts=None):
     """Update contact, add log entry, set reminder for log_interaction intent."""
@@ -27,7 +27,7 @@ def execute_log_interaction(sheet_id, nlp_contacts, notes, follow_up_date,
         try:
             sheets_client.update_contact(sheet_id, contact_name, {
                 "last_contact_date": contact_date,
-                "last_contact_notes": notes or "",
+                "last_interaction_message": raw_message,
                 "reminder_date": reminder_date,
             })
         except ValueError:
@@ -35,7 +35,7 @@ def execute_log_interaction(sheet_id, nlp_contacts, notes, follow_up_date,
                 "name": contact_name,
                 "status": "active",
                 "last_contact_date": contact_date,
-                "last_contact_notes": notes or "",
+                "last_interaction_message": raw_message,
                 "reminder_date": reminder_date,
             })
 
@@ -43,7 +43,6 @@ def execute_log_interaction(sheet_id, nlp_contacts, notes, follow_up_date,
             "date": today_str,
             "contact_name": contact_name,
             "intent": "log_interaction",
-            "notes": notes or "",
             "raw_message": raw_message,
         })
 
@@ -57,7 +56,7 @@ def _get_existing_reminder(contact_name, active_contacts):
     return None
 
 
-def execute_set_reminder(sheet_id, nlp_contacts, notes, follow_up_date,
+def execute_set_reminder(sheet_id, nlp_contacts, follow_up_date,
                           today_str, default_reminder_days, raw_message):
     """Update reminder_date on contact(s) and add log entry."""
     for contact in nlp_contacts:
@@ -74,7 +73,6 @@ def execute_set_reminder(sheet_id, nlp_contacts, notes, follow_up_date,
             "date": today_str,
             "contact_name": contact_name,
             "intent": "set_reminder",
-            "notes": notes or "",
             "raw_message": raw_message,
         })
 
@@ -89,7 +87,6 @@ def execute_update_contact(sheet_id, nlp_contacts, new_name, raw_message, today_
             "date": today_str,
             "contact_name": new_name,
             "intent": "update_contact",
-            "notes": f"Renamed from {old_name}",
             "raw_message": raw_message,
         })
 
@@ -100,7 +97,7 @@ def execute_archive(sheet_id, nlp_contacts):
         sheets_client.archive_contact(sheet_id, contact["name"])
 
 
-def execute_onboarding(sheet_id, nlp_contacts, notes, follow_up_date,
+def execute_onboarding(sheet_id, nlp_contacts, follow_up_date,
                         today_str, default_reminder_days, raw_message,
                         interaction_date=None):
     """Add a new contact and log the interaction."""
@@ -117,7 +114,7 @@ def execute_onboarding(sheet_id, nlp_contacts, notes, follow_up_date,
             "name": contact_name,
             "status": "active",
             "last_contact_date": contact_date,
-            "last_contact_notes": notes or "",
+            "last_interaction_message": raw_message,
             "reminder_date": reminder_date,
         })
 
@@ -125,6 +122,5 @@ def execute_onboarding(sheet_id, nlp_contacts, notes, follow_up_date,
             "date": today_str,
             "contact_name": contact_name,
             "intent": "onboarding",
-            "notes": notes or "",
             "raw_message": raw_message,
         })

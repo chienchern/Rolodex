@@ -28,7 +28,7 @@ SAMPLE_UPDATE = {
 }
 
 
-def _nlp_response(intent, contacts=None, notes=None, follow_up_date=None,
+def _nlp_response(intent, contacts=None, follow_up_date=None,
                   interaction_date=None,
                   needs_clarification=False, clarification_question=None,
                   response_message="Done.", **extra):
@@ -39,17 +39,14 @@ def _nlp_response(intent, contacts=None, notes=None, follow_up_date=None,
         "response_message": response_message,
     }
     if intent == "log_interaction":
-        result["notes"] = notes
         result["interaction_date"] = interaction_date
         result["follow_up_date"] = follow_up_date
     elif intent == "set_reminder":
-        result["notes"] = notes
         result["follow_up_date"] = follow_up_date
     elif intent in ("archive", "clarify"):
         result["needs_clarification"] = needs_clarification
         result["clarification_question"] = clarification_question
     elif intent == "onboarding":
-        result["notes"] = notes
         result["interaction_date"] = interaction_date
         result["follow_up_date"] = follow_up_date
         result["needs_clarification"] = needs_clarification
@@ -106,7 +103,6 @@ def handler(env_vars):
             mock_nlp.parse_sms.return_value = _nlp_response(
                 intent="log_interaction",
                 contacts=[{"name": "Sarah Chen", "match_type": "fuzzy"}],
-                notes="had coffee",
                 follow_up_date="2026-03-01",
                 response_message="Updated Sarah Chen.",
             )
@@ -266,7 +262,6 @@ class TestLogInteraction:
         handler.mock_nlp.parse_sms.return_value = _nlp_response(
             intent="log_interaction",
             contacts=[{"name": "Sarah Chen", "match_type": "fuzzy"}],
-            notes="had coffee",
             follow_up_date="2026-03-01",
             response_message="Updated Sarah Chen.",
         )

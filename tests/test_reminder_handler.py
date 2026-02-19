@@ -95,7 +95,7 @@ class TestReminderDateLogic:
                 "name": "Sarah Chen",
                 "reminder_date": today_str,
                 "last_contact_date": "2026-01-15",
-                "last_contact_notes": "discussed her startup",
+                "last_interaction_message": "discussed her startup",
                 "status": "active",
             }
         ]
@@ -118,14 +118,14 @@ class TestReminderDateLogic:
                 "name": "Sarah Chen",
                 "reminder_date": today_str,
                 "last_contact_date": "2026-01-15",
-                "last_contact_notes": "discussed her startup",
+                "last_interaction_message": "discussed her startup",
                 "status": "active",
             }
         ]
 
         body, status = handler.mod.handle_reminder_cron("Bearer valid")
         sms_body = handler.mock_send.call_args[0][1]
-        # PRD format: "Today: Reach out to Sarah Chen (last spoke on Jan 15, 2026 about discussed her startup)"
+        # Format: "Today: Reach out to Sarah Chen (last spoke on Jan 15, 2026 — discussed her startup)"
         assert "Today" in sms_body
         assert "Reach out to" in sms_body or "reach out to" in sms_body.lower()
         assert "Jan" in sms_body or "2026-01-15" in sms_body  # last contact date present
@@ -144,7 +144,7 @@ class TestReminderDateLogic:
                 "name": "Dad",
                 "reminder_date": reminder_date.isoformat(),
                 "last_contact_date": last_contact_date.isoformat(),
-                "last_contact_notes": "called him about retirement",
+                "last_interaction_message": "called him about retirement",
                 "status": "active",
             }
         ]
@@ -169,14 +169,14 @@ class TestReminderDateLogic:
                 "name": "Dad",
                 "reminder_date": reminder_date.isoformat(),
                 "last_contact_date": last_contact_date.isoformat(),
-                "last_contact_notes": "called him about retirement",
+                "last_interaction_message": "called him about retirement",
                 "status": "active",
             }
         ]
 
         body, status = handler.mod.handle_reminder_cron("Bearer valid")
         sms_body = handler.mock_send.call_args[0][1]
-        # PRD format: "Reminder: Reach out to Dad in 1 week (last spoke about called him about retirement)"
+        # Format: "Reminder: Reach out to Dad in 1 week (last spoke — called him about retirement)"
         assert "Reminder" in sms_body or "1 week" in sms_body
         assert "Reach out to" in sms_body or "reach out to" in sms_body.lower()
 
@@ -195,7 +195,7 @@ class TestReminderDateLogic:
                 "name": "Mike Torres",
                 "reminder_date": reminder_date.isoformat(),
                 "last_contact_date": last_contact_date.isoformat(),
-                "last_contact_notes": "lunch",
+                "last_interaction_message": "lunch",
                 "status": "active",
             }
         ]
@@ -224,7 +224,7 @@ class TestReminderDateLogic:
                 "name": "Mike Torres",
                 "reminder_date": "",
                 "last_contact_date": "2026-02-03",
-                "last_contact_notes": "lunch",
+                "last_interaction_message": "lunch",
                 "status": "active",
             }
         ]
@@ -254,14 +254,14 @@ class TestSMSBatching:
                 "name": "Sarah Chen",
                 "reminder_date": today_str,
                 "last_contact_date": "2026-01-15",
-                "last_contact_notes": "discussed her startup",
+                "last_interaction_message": "discussed her startup",
                 "status": "active",
             },
             {
                 "name": "Dad",
                 "reminder_date": today_str,
                 "last_contact_date": "2026-01-20",
-                "last_contact_notes": "called about retirement",
+                "last_interaction_message": "called about retirement",
                 "status": "active",
             },
         ]
@@ -300,7 +300,7 @@ class TestTimezoneHandling:
                 "name": "Kiwi Friend",
                 "reminder_date": today_str,
                 "last_contact_date": "2026-01-01",
-                "last_contact_notes": "catch up",
+                "last_interaction_message": "catch up",
                 "status": "active",
             }
         ]

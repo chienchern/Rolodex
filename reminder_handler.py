@@ -81,11 +81,11 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
                 if reminder_date == today:
                     last_contact_str = contact.get("last_contact_date", "")
                     last_contact_display = _format_date(last_contact_str)
-                    notes = contact.get("last_contact_notes", "")
-                    notes_part = f" about {notes}" if notes else ""
+                    msg = contact.get("last_interaction_message", "")
+                    msg_part = f" — {msg}" if msg else ""
                     reminders.append(
                         f"Today: Reach out to {contact['name']} "
-                        f"(last spoke on {last_contact_display}{notes_part})"
+                        f"(last spoke on {last_contact_display}{msg_part})"
                     )
                     continue
 
@@ -99,11 +99,11 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
                             ).date()
                             # Only send if reminder_date > last_contact_date + 7 days
                             if reminder_date > last_contact_date + timedelta(days=7):
-                                notes = contact.get("last_contact_notes", "")
-                                notes_part = f" about {notes}" if notes else ""
+                                msg = contact.get("last_interaction_message", "")
+                                msg_part = f" — {msg}" if msg else ""
                                 reminders.append(
                                     f"Reminder: Reach out to {contact['name']} in 1 week "
-                                    f"(last spoke{notes_part})"
+                                    f"(last spoke{msg_part})"
                                 )
                         except (ValueError, TypeError):
                             pass
