@@ -116,25 +116,43 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
         default_reminder_days = int(settings.get("default_reminder_days", 14))
 
         if intent == "log_interaction":
-            execute_log_interaction(
-                sheet_id, nlp_contacts, follow_up_date,
-                today_str, default_reminder_days, body,
-                interaction_date, contacts,
-            )
+            if nlp_contacts:
+                execute_log_interaction(
+                    sheet_id, nlp_contacts, follow_up_date,
+                    today_str, default_reminder_days, body,
+                    interaction_date, contacts,
+                )
+            else:
+                needs_clarification = True
+                clarification_question = response_message or "Who did you mean? I didn't catch a contact name."
 
         elif intent == "query":
-            pass
+            for contact in nlp_contacts:
+                sheets_client.add_log_entry(sheet_id, {
+                    "date": today_str,
+                    "contact_name": contact["name"],
+                    "intent": "query",
+                    "raw_message": body,
+                })
 
         elif intent == "set_reminder":
-            execute_set_reminder(
-                sheet_id, nlp_contacts, follow_up_date,
-                today_str, default_reminder_days, body,
-            )
+            if nlp_contacts:
+                execute_set_reminder(
+                    sheet_id, nlp_contacts, follow_up_date,
+                    today_str, default_reminder_days, body,
+                )
+            else:
+                needs_clarification = True
+                clarification_question = response_message or "Who would you like to set a reminder for?"
 
         elif intent == "update_contact":
-            execute_update_contact(
-                sheet_id, nlp_contacts, new_name, body, today_str,
-            )
+            if nlp_contacts:
+                execute_update_contact(
+                    sheet_id, nlp_contacts, new_name, body, today_str,
+                )
+            else:
+                needs_clarification = True
+                clarification_question = response_message or "Who would you like to rename?"
 
         elif intent == "archive":
             if needs_clarification:

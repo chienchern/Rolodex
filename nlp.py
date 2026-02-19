@@ -76,6 +76,7 @@ Rules:
 - For "onboarding": used when a contact name is not found in the list. Ask for confirmation to add a new contact.
 - If the message doesn't clearly match a supported intent, return intent "unknown". Do NOT guess. Respond with: "I'm not sure what you'd like to do. I can log interactions, look up contacts, set reminders, rename contacts, or archive contacts."
 - If the message is just "YES" or "NO" with no pending context, set intent to "unknown" and respond with a helpful message.
+- If the message implies a contact-specific action (log_interaction, set_reminder, archive, update_contact) but no contact name can be identified from the message text or recent context, set intent to "clarify" with needs_clarification to true and ask who the user is referring to (e.g., "Who would you like to set a reminder for?").
 - Keep response_message concise and conversational. Include day-of-week in dates (e.g., "Monday, Feb 24, 2026").
 - Return ONLY the JSON object, no other text.
 

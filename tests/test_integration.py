@@ -325,9 +325,16 @@ class TestQuery:
             assert before == after, \
                 f"Contact '{seed['name']}' should not change. Before: {before}, After: {after}"
 
-        # --- Assert: Logs tab -- no new rows ---
+        # --- Assert: Contacts tab -- no changes ---
+        # (already asserted above)
+
+        # --- Assert: Logs tab -- 1 query entry, no interaction entries ---
         logs = get_logs(gc)
-        assert len(logs) == 0, f"Expected 0 log entries for a query, got {len(logs)}"
+        assert len(logs) >= 1, f"Expected a query log entry, got {len(logs)}"
+        query_logs = [l for l in logs if l["intent"] == "query"]
+        assert len(query_logs) >= 1, f"Expected a query log entry, got intents: {[l['intent'] for l in logs]}"
+        assert all(l["intent"] == "query" for l in logs), \
+            f"Only query log entries expected, got: {[l['intent'] for l in logs]}"
 
         print("  Test 3 PASSED")
 

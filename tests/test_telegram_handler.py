@@ -261,7 +261,7 @@ class TestLogInteraction:
 
 class TestQuery:
 
-    def test_no_sheet_updates_sends_response(self, handler):
+    def test_logs_query_and_sends_response(self, handler):
         handler.mock_nlp.parse_sms.return_value = _nlp_response(
             intent="query",
             contacts=[{"name": "Sarah Chen", "match_type": "fuzzy"}],
@@ -271,7 +271,9 @@ class TestQuery:
         handler.mod.handle_inbound_telegram(SAMPLE_UPDATE, SECRET_TOKEN)
 
         handler.mock_sheets.update_contact.assert_not_called()
-        handler.mock_sheets.add_log_entry.assert_not_called()
+        log_data = handler.mock_sheets.add_log_entry.call_args[0][1]
+        assert log_data["intent"] == "query"
+        assert log_data["contact_name"] == "Sarah Chen"
         handler.mock_send_message.assert_called_once()
         reply_text = handler.mock_send_message.call_args[0][1]
         assert "Sarah" in reply_text

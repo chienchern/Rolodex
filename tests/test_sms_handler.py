@@ -316,7 +316,7 @@ class TestLogInteractionDate:
 
 
 class TestQuery:
-    def test_no_sheet_updates_sends_response(self, handler):
+    def test_logs_query_and_sends_response(self, handler):
         handler.mock_nlp.parse_sms.return_value = _nlp_response(
             intent="query",
             contacts=[{"name": "Mike Torres", "match_type": "exact"}],
@@ -326,7 +326,9 @@ class TestQuery:
         handler.mod.handle_inbound_sms(SAMPLE_FORM_DATA, REQUEST_URL, TWILIO_SIGNATURE)
 
         handler.mock_sheets.update_contact.assert_not_called()
-        handler.mock_sheets.add_log_entry.assert_not_called()
+        log_data = handler.mock_sheets.add_log_entry.call_args[0][1]
+        assert log_data["intent"] == "query"
+        assert log_data["contact_name"] == "Mike Torres"
         handler.mock_send_message.assert_called_once()
         sms_body = handler.mock_send_message.call_args[0][1]
         assert "Mike Torres" in sms_body
