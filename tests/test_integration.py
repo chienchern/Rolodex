@@ -34,7 +34,8 @@ WEBHOOK_URL = f"{APP_URL}/sms-webhook"
 SA_KEY_PATH = os.path.join(os.path.dirname(__file__), "..", "sa-key.json")
 
 # How long to wait after posting for processing
-PROCESSING_WAIT = 10
+# 20s covers normal processing (~3s) plus one sheets_client retry cycle (5s backoff)
+PROCESSING_WAIT = 20
 
 
 def _sheets_call_with_retry(fn, *args, retries=5, **kwargs):
@@ -117,6 +118,13 @@ def gc():
 def validator():
     """Twilio request validator."""
     return RequestValidator(TWILIO_AUTH_TOKEN)
+
+
+@pytest.fixture(autouse=True, scope="class")
+def inter_test_pause():
+    """Pause between test classes to avoid exhausting the shared Sheets API quota."""
+    yield
+    time.sleep(30)
 
 
 def reset_seed_data(gc):

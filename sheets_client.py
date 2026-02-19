@@ -1,11 +1,30 @@
 """Google Sheets data layer — read/write via gspread."""
 
+import time
+
 import gspread
+from gspread.exceptions import APIError
 
 from config import GSPREAD_CREDENTIALS, MASTER_SHEET_ID
 
-# Lazy-cached gspread client
+# Module-level cache for client, spreadsheets, and worksheets.
+# Cloud Run workers are long-lived, so caching here avoids repeated
+# open_by_key / worksheet() API calls across requests.
 _client = None
+_spreadsheets: dict = {}
+_worksheets: dict = {}
+
+
+def _retry(fn, *args, retries=4, **kwargs):
+    """Call fn(*args, **kwargs), retrying on 429 quota errors with backoff."""
+    for attempt in range(retries):
+        try:
+            return fn(*args, **kwargs)
+        except APIError as e:
+            if e.response.status_code == 429 and attempt < retries - 1:
+                time.sleep(5 * (2 ** attempt))  # 5s, 10s, 20s
+            else:
+                raise
 
 
 def _get_client():
@@ -16,10 +35,27 @@ def _get_client():
     return _client
 
 
+def _get_spreadsheet(sheet_id: str):
+    """Return a cached Spreadsheet object, opening it on first call."""
+    if sheet_id not in _spreadsheets:
+        _spreadsheets[sheet_id] = _retry(_get_client().open_by_key, sheet_id)
+    return _spreadsheets[sheet_id]
+
+
+def _get_worksheet(sheet_id: str, tab_name: str):
+    """Return a cached Worksheet object, fetching it on first call."""
+    key = (sheet_id, tab_name)
+    if key not in _worksheets:
+        _worksheets[key] = _retry(_get_spreadsheet(sheet_id).worksheet, tab_name)
+    return _worksheets[key]
+
+
 def _reset_client():
-    """Reset the cached client. Used in tests."""
-    global _client
+    """Reset all caches. Used in tests."""
+    global _client, _spreadsheets, _worksheets
     _client = None
+    _spreadsheets.clear()
+    _worksheets.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +121,7 @@ def update_contact(sheet_id: str, contact_name: str, updates: dict) -> None:
     headers = contacts_ws.row_values(1)
     for field, value in updates.items():
         col = headers.index(field) + 1  # 1-indexed
-        contacts_ws.update_cell(row, col, value)
+        _retry(contacts_ws.update_cell, row, col, value)
 
 
 def add_contact(sheet_id: str, contact_data: dict) -> None:
@@ -96,7 +132,7 @@ def add_contact(sheet_id: str, contact_data: dict) -> None:
 
     headers = contacts_ws.row_values(1)
     row = [contact_data.get(h, "") for h in headers]
-    contacts_ws.append_row(row)
+    _retry(contacts_ws.append_row, row)
 
 
 def rename_contact(sheet_id: str, old_name: str, new_name: str) -> None:
@@ -111,7 +147,7 @@ def rename_contact(sheet_id: str, old_name: str, new_name: str) -> None:
 
     headers = contacts_ws.row_values(1)
     name_col = headers.index("name") + 1
-    contacts_ws.update_cell(cell.row, name_col, new_name)
+    _retry(contacts_ws.update_cell, cell.row, name_col, new_name)
 
 
 def archive_contact(sheet_id: str, contact_name: str) -> None:
@@ -127,7 +163,7 @@ def archive_contact(sheet_id: str, contact_name: str) -> None:
     row = cell.row
     headers = contacts_ws.row_values(1)
     status_col = headers.index("status") + 1
-    contacts_ws.update_cell(row, status_col, "archived")
+    _retry(contacts_ws.update_cell, row, status_col, "archived")
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +191,7 @@ def add_log_entry(sheet_id: str, log_data: dict) -> None:
 
     headers = logs_ws.row_values(1)
     row = [log_data.get(h, "") for h in headers]
-    logs_ws.append_row(row)
+    _retry(logs_ws.append_row, row)
 
 
 def get_recent_logs(sheet_id: str, limit: int = 5) -> list[dict]:
