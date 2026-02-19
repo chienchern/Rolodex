@@ -21,6 +21,7 @@ VALID_INTENTS = {
     "log_interaction",
     "query",
     "set_reminder",
+    "update_contact",
     "archive",
     "onboarding",
     "clarify",
@@ -47,7 +48,7 @@ Classify the intent and return a JSON object. Include the common fields for ALL 
 plus the intent-specific fields listed below. Do NOT include fields that aren't relevant to the intent.
 
 Common fields (always include):
-- "intent": one of "log_interaction", "query", "set_reminder", "archive", "onboarding", "clarify", "unknown"
+- "intent": one of "log_interaction", "query", "set_reminder", "update_contact", "archive", "onboarding", "clarify", "unknown"
 - "contacts": array of objects with "name" (string) and "match_type" ("exact", "fuzzy", "new", "ambiguous")
 - "response_message": string SMS reply to send to the user
 
@@ -55,6 +56,7 @@ Intent-specific fields:
 - log_interaction: "notes" (string — what was discussed), "interaction_date" (ISO YYYY-MM-DD — when it happened; parse relative dates like "yesterday"/"Friday" from current date; default to current date if not mentioned), "follow_up_date" (ISO YYYY-MM-DD — only if user explicitly mentions timing, else omit)
 - query: (no extra fields)
 - set_reminder: "notes" (string or null), "follow_up_date" (ISO YYYY-MM-DD — the requested reminder date; null if no timing specified)
+- update_contact: "new_name" (string — the new name for the contact). The existing name goes in "contacts".
 - archive: "needs_clarification" (boolean), "clarification_question" (string)
 - onboarding: "notes" (string or null), "interaction_date" (ISO YYYY-MM-DD or null), "follow_up_date" (ISO YYYY-MM-DD or null), "needs_clarification" (boolean), "clarification_question" (string)
 - clarify: "needs_clarification" (always true), "clarification_question" (string)
@@ -67,6 +69,7 @@ Rules:
 - For "log_interaction": always include notes about what was discussed. Parse interaction_date from the message. Compute follow_up_date only if the user explicitly mentions timing.
 - For "query": return information from the contact list in response_message. No sheet updates needed. If last_contact_notes is empty, omit the "Discussed:" part.
 - For "set_reminder": set follow_up_date to the requested date. If no timing specified, set follow_up_date to null.
+- For "update_contact": used when the user wants to rename a contact (e.g., "Rename Becca to Becca Zhou", "Change Mike's name to Mike Torres"). Return the existing name in contacts and the new name in "new_name".
 - For "archive": set needs_clarification to true to confirm with the user.
 - For "onboarding": used when a contact name is not found in the list. Ask for confirmation to add a new contact.
 - If the message is just "YES" or "NO" with no pending context, set intent to "unknown" and respond with a helpful message.
@@ -189,6 +192,8 @@ def _normalize_result(parsed):
     elif intent == "set_reminder":
         result["notes"] = parsed.get("notes")
         result["follow_up_date"] = parsed.get("follow_up_date")
+    elif intent == "update_contact":
+        result["new_name"] = parsed.get("new_name")
     elif intent in ("archive", "clarify"):
         result["needs_clarification"] = parsed.get("needs_clarification", False)
         result["clarification_question"] = parsed.get("clarification_question")

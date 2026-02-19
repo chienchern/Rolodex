@@ -79,6 +79,21 @@ def execute_set_reminder(sheet_id, nlp_contacts, notes, follow_up_date,
         })
 
 
+def execute_update_contact(sheet_id, nlp_contacts, new_name, raw_message, today_str):
+    """Rename a contact and add a log entry."""
+    for contact in nlp_contacts:
+        old_name = contact["name"]
+        sheets_client.rename_contact(sheet_id, old_name, new_name)
+
+        sheets_client.add_log_entry(sheet_id, {
+            "date": today_str,
+            "contact_name": new_name,
+            "intent": "update_contact",
+            "notes": f"Renamed from {old_name}",
+            "raw_message": raw_message,
+        })
+
+
 def execute_archive(sheet_id, nlp_contacts):
     """Archive contact(s)."""
     for contact in nlp_contacts:

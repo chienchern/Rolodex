@@ -402,3 +402,33 @@ class TestArchiveContact:
 
         with pytest.raises(ValueError, match="not found"):
             archive_contact("test_sheet_id", "Ghost")
+
+
+# ---------------------------------------------------------------------------
+# rename_contact
+# ---------------------------------------------------------------------------
+
+class TestRenameContact:
+    """Tests for rename_contact(sheet_id, old_name, new_name)."""
+
+    def test_updates_name_cell(self, env_vars, mock_gspread_client):
+        from sheets_client import rename_contact
+
+        contacts_ws = mock_gspread_client._worksheets["Contacts"]
+        contacts_ws.find.return_value = _cell(row=2, col=1, value="Becca")
+        headers = ["name", "reminder_date", "last_contact_date", "last_contact_notes", "status"]
+        contacts_ws.row_values.return_value = headers
+
+        rename_contact("test_sheet_id", "Becca", "Becca Zhou")
+
+        # name is column 1
+        contacts_ws.update_cell.assert_called_once_with(2, 1, "Becca Zhou")
+
+    def test_raises_when_contact_not_found(self, env_vars, mock_gspread_client):
+        from sheets_client import rename_contact
+
+        contacts_ws = mock_gspread_client._worksheets["Contacts"]
+        contacts_ws.find.return_value = None
+
+        with pytest.raises(ValueError, match="not found"):
+            rename_contact("test_sheet_id", "Ghost", "Ghost Name")

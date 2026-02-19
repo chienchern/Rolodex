@@ -335,6 +335,33 @@ class TestClarify:
         assert "John" in reply_text
 
 
+class TestUpdateContact:
+
+    def test_renames_contact_and_sends_reply(self, handler):
+        handler.mock_nlp.parse_sms.return_value = {
+            "intent": "update_contact",
+            "contacts": [{"name": "Becca", "match_type": "exact"}],
+            "new_name": "Becca Zhou",
+            "response_message": "Renamed Becca to Becca Zhou.",
+        }
+
+        handler.mod.handle_inbound_telegram(SAMPLE_UPDATE, SECRET_TOKEN)
+
+        handler.mock_sheets.rename_contact.assert_called_once()
+        rename_args = handler.mock_sheets.rename_contact.call_args[0]
+        assert rename_args[1] == "Becca"
+        assert rename_args[2] == "Becca Zhou"
+
+        handler.mock_sheets.add_log_entry.assert_called_once()
+        log_data = handler.mock_sheets.add_log_entry.call_args[0][1]
+        assert log_data["intent"] == "update_contact"
+        assert log_data["contact_name"] == "Becca Zhou"
+
+        handler.mock_send_message.assert_called_once()
+        reply_text = handler.mock_send_message.call_args[0][1]
+        assert "Becca Zhou" in reply_text
+
+
 # ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------

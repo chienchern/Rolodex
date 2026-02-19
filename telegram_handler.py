@@ -15,6 +15,7 @@ from contact_actions import (
     execute_log_interaction,
     execute_onboarding,
     execute_set_reminder,
+    execute_update_contact,
 )
 from messaging import send_message
 
@@ -77,6 +78,17 @@ def handle_inbound_telegram(json_data: dict, secret_token_header: str | None) ->
         sheet_id = user["sheet_id"]
 
         # ---------------------------------------------------------------
+        # Step 4b: Handle Telegram bot commands (e.g. /start, /help)
+        # ---------------------------------------------------------------
+        if text.startswith("/"):
+            send_message(user, (
+                "Hi! Send me a message like 'Had coffee with Sarah today' "
+                "to log an interaction, or 'When did I last talk to John?' "
+                "to query a contact."
+            ))
+            return ""
+
+        # ---------------------------------------------------------------
         # Step 5: Store pending message and sleep for batch window
         # ---------------------------------------------------------------
         context.store_pending_message(chat_id, text, update_id)
@@ -131,6 +143,7 @@ def handle_inbound_telegram(json_data: dict, secret_token_header: str | None) ->
         notes = nlp_result.get("notes")
         interaction_date = nlp_result.get("interaction_date")
         follow_up_date = nlp_result.get("follow_up_date")
+        new_name = nlp_result.get("new_name")
         needs_clarification = nlp_result.get("needs_clarification", False)
         clarification_question = nlp_result.get("clarification_question")
         response_message = nlp_result.get("response_message", "")
@@ -164,6 +177,11 @@ def handle_inbound_telegram(json_data: dict, secret_token_header: str | None) ->
             execute_set_reminder(
                 sheet_id, nlp_contacts, notes, follow_up_date,
                 today_str, default_reminder_days, combined_text,
+            )
+
+        elif intent == "update_contact":
+            execute_update_contact(
+                sheet_id, nlp_contacts, new_name, combined_text, today_str,
             )
 
         elif intent == "archive":

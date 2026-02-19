@@ -99,6 +99,21 @@ def add_contact(sheet_id: str, contact_data: dict) -> None:
     contacts_ws.append_row(row)
 
 
+def rename_contact(sheet_id: str, old_name: str, new_name: str) -> None:
+    """Rename a contact. Raises ValueError if not found."""
+    client = _get_client()
+    spreadsheet = client.open_by_key(sheet_id)
+    contacts_ws = spreadsheet.worksheet("Contacts")
+
+    cell = contacts_ws.find(old_name)
+    if cell is None:
+        raise ValueError(f"Contact '{old_name}' not found")
+
+    headers = contacts_ws.row_values(1)
+    name_col = headers.index("name") + 1
+    contacts_ws.update_cell(cell.row, name_col, new_name)
+
+
 def archive_contact(sheet_id: str, contact_name: str) -> None:
     """Set a contact's status to 'archived'. Raises ValueError if not found."""
     client = _get_client()
