@@ -1,6 +1,6 @@
 # Rolodex
 
-A personal CRM you text. Log interactions, query contact history, and get automatic follow-up reminders — all via Telegram or SMS, with Google Sheets as the data layer.
+A personal CRM you text. Log interactions, query contact history, and get automatic follow-up reminders — all via Telegram, with Google Sheets as the data layer.
 
 ## Table of Contents
 
@@ -13,7 +13,7 @@ A personal CRM you text. Log interactions, query contact history, and get automa
 
 ## How it works
 
-You text a bot (Telegram or SMS) in plain English. The app uses Gemini to parse your intent, updates your Google Sheet, and replies with a confirmation. A daily cron job at 9am sends reminder messages for contacts whose follow-up date has arrived.
+You text a Telegram bot in plain English. The app uses Gemini to parse your intent, updates your Google Sheet, and replies with a confirmation. A daily cron job at 9am sends reminder messages for contacts whose follow-up date has arrived.
 
 Your data lives entirely in a Google Sheet you own — one tab for contacts, one for interaction logs, one for settings.
 
@@ -62,14 +62,13 @@ Rolodex:  Time to reach out to Sarah Chen today.
 ## Architecture
 
 ```
-User Telegram ──► Telegram  ──► Cloud Run /telegram-webhook ──► Gemini ──► Google Sheets
-User SMS      ──► Twilio    ──► Cloud Run /sms-webhook      ──►    │            ▲
-                                        │                          └────────────┘
-                                        ▼
-                                   Firestore
-                              (context + idempotency)
+User ──► Telegram ──► Cloud Run /telegram-webhook ──► Gemini ──► Google Sheets
+                             │
+                             ▼
+                        Firestore
+                   (context + idempotency)
 
-Cloud Scheduler ──► Cloud Run /reminder-cron ──► Telegram / Twilio ──► User
+Cloud Scheduler ──► Cloud Run /reminder-cron ──► Telegram ──► User
 ```
 
 | Component | Choice |
@@ -78,7 +77,7 @@ Cloud Scheduler ──► Cloud Run /reminder-cron ──► Telegram / Twilio �
 | NLP | Gemini API |
 | Data store | Google Sheets (via gspread) |
 | Ephemeral state | Firestore (multi-turn context, idempotency) |
-| Messaging | Telegram Bot API or Twilio SMS |
+| Messaging | Telegram Bot API |
 | Scheduler | Cloud Scheduler (daily at 9am per user timezone) |
 
 ---
