@@ -11,12 +11,12 @@ _client = None
 
 
 def _retry(fn, *args, retries=4, **kwargs):
-    """Call fn(*args, **kwargs), retrying on 429 quota errors with backoff."""
+    """Call fn(*args, **kwargs), retrying on transient API errors with backoff."""
     for attempt in range(retries):
         try:
             return fn(*args, **kwargs)
         except APIError as e:
-            if e.response.status_code == 429 and attempt < retries - 1:
+            if e.response.status_code in (429, 500, 503) and attempt < retries - 1:
                 time.sleep(5 * (2 ** attempt))  # 5s, 10s, 20s
             else:
                 raise
@@ -45,7 +45,7 @@ def get_user_by_phone(phone: str) -> dict | None:
     client = _get_client()
     spreadsheet = client.open_by_key(MASTER_SHEET_ID)
     users_ws = spreadsheet.worksheet("Users")
-    rows = users_ws.get_all_records(numericise_ignore=["all"])
+    rows = _retry(users_ws.get_all_records, numericise_ignore=["all"])
     for row in rows:
         if str(row["phone"]) == phone:
             return row
@@ -57,7 +57,7 @@ def get_user_by_telegram_chat_id(chat_id: str) -> dict | None:
     client = _get_client()
     spreadsheet = client.open_by_key(MASTER_SHEET_ID)
     users_ws = spreadsheet.worksheet("Users")
-    rows = users_ws.get_all_records(numericise_ignore=["all"])
+    rows = _retry(users_ws.get_all_records, numericise_ignore=["all"])
     for row in rows:
         if str(row.get("telegram_chat_id", "")).strip() == chat_id:
             return row
@@ -69,7 +69,7 @@ def get_all_users() -> list[dict]:
     client = _get_client()
     spreadsheet = client.open_by_key(MASTER_SHEET_ID)
     users_ws = spreadsheet.worksheet("Users")
-    return users_ws.get_all_records(numericise_ignore=["all"])
+    return _retry(users_ws.get_all_records, numericise_ignore=["all"])
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ def get_active_contacts(sheet_id: str) -> list[dict]:
     client = _get_client()
     spreadsheet = client.open_by_key(sheet_id)
     contacts_ws = spreadsheet.worksheet("Contacts")
-    rows = contacts_ws.get_all_records()
+    rows = _retry(contacts_ws.get_all_records)
     return [row for row in rows if row.get("status") == "active"]
 
 
@@ -91,12 +91,12 @@ def update_contact(sheet_id: str, contact_name: str, updates: dict) -> None:
     spreadsheet = client.open_by_key(sheet_id)
     contacts_ws = spreadsheet.worksheet("Contacts")
 
-    cell = contacts_ws.find(contact_name)
+    cell = _retry(contacts_ws.find, contact_name)
     if cell is None:
         raise ValueError(f"Contact '{contact_name}' not found")
 
     row = cell.row
-    headers = contacts_ws.row_values(1)
+    headers = _retry(contacts_ws.row_values, 1)
     for field, value in updates.items():
         col = headers.index(field) + 1  # 1-indexed
         _retry(contacts_ws.update_cell, row, col, value)
@@ -108,7 +108,7 @@ def add_contact(sheet_id: str, contact_data: dict) -> None:
     spreadsheet = client.open_by_key(sheet_id)
     contacts_ws = spreadsheet.worksheet("Contacts")
 
-    headers = contacts_ws.row_values(1)
+    headers = _retry(contacts_ws.row_values, 1)
     row = [contact_data.get(h, "") for h in headers]
     _retry(contacts_ws.append_row, row)
 
@@ -119,11 +119,11 @@ def rename_contact(sheet_id: str, old_name: str, new_name: str) -> None:
     spreadsheet = client.open_by_key(sheet_id)
     contacts_ws = spreadsheet.worksheet("Contacts")
 
-    cell = contacts_ws.find(old_name)
+    cell = _retry(contacts_ws.find, old_name)
     if cell is None:
         raise ValueError(f"Contact '{old_name}' not found")
 
-    headers = contacts_ws.row_values(1)
+    headers = _retry(contacts_ws.row_values, 1)
     name_col = headers.index("name") + 1
     _retry(contacts_ws.update_cell, cell.row, name_col, new_name)
 
@@ -134,12 +134,12 @@ def archive_contact(sheet_id: str, contact_name: str) -> None:
     spreadsheet = client.open_by_key(sheet_id)
     contacts_ws = spreadsheet.worksheet("Contacts")
 
-    cell = contacts_ws.find(contact_name)
+    cell = _retry(contacts_ws.find, contact_name)
     if cell is None:
         raise ValueError(f"Contact '{contact_name}' not found")
 
     row = cell.row
-    headers = contacts_ws.row_values(1)
+    headers = _retry(contacts_ws.row_values, 1)
     status_col = headers.index("status") + 1
     _retry(contacts_ws.update_cell, row, status_col, "archived")
 
@@ -153,7 +153,7 @@ def get_settings(sheet_id: str) -> dict:
     client = _get_client()
     spreadsheet = client.open_by_key(sheet_id)
     settings_ws = spreadsheet.worksheet("Settings")
-    rows = settings_ws.get_all_records()
+    rows = _retry(settings_ws.get_all_records)
     return {row["key"]: row["value"] for row in rows}
 
 
@@ -167,7 +167,7 @@ def add_log_entry(sheet_id: str, log_data: dict) -> None:
     spreadsheet = client.open_by_key(sheet_id)
     logs_ws = spreadsheet.worksheet("Logs")
 
-    headers = logs_ws.row_values(1)
+    headers = _retry(logs_ws.row_values, 1)
     row = [log_data.get(h, "") for h in headers]
     _retry(logs_ws.append_row, row)
 
@@ -178,7 +178,7 @@ def get_recent_logs(sheet_id: str, limit: int = 5) -> list[dict]:
     spreadsheet = client.open_by_key(sheet_id)
     logs_ws = spreadsheet.worksheet("Logs")
 
-    all_values = logs_ws.get_all_values()
+    all_values = _retry(logs_ws.get_all_values)
     if len(all_values) <= 1:
         return []  # only header row or empty
 
