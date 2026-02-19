@@ -29,6 +29,7 @@ TWILIO_AUTH_TOKEN = os.environ["TWILIO_AUTH_TOKEN"]
 TWILIO_PHONE_NUMBER = os.environ["TWILIO_PHONE_NUMBER"]
 TEST_USER_PHONE = os.environ["FIRST_USER_PHONE_NUMBER"]
 MASTER_SHEET_ID = os.environ["MASTER_SHEET_ID"]
+USER_SHEET_ID = os.environ["FIRST_USER_SHEET_ID"]
 APP_URL = os.environ.get("APP_URL", "https://rolodex-mvp-327059660015.us-central1.run.app")
 WEBHOOK_URL = f"{APP_URL}/sms-webhook"
 SA_KEY_PATH = os.path.join(os.path.dirname(__file__), "..", "sa-key.json")
@@ -129,7 +130,7 @@ def inter_test_pause():
 
 def reset_seed_data(gc):
     """Clear Contacts and Logs tabs, re-seed contacts with known data."""
-    spreadsheet = _sheets_call_with_retry(gc.open_by_key, MASTER_SHEET_ID)
+    spreadsheet = _sheets_call_with_retry(gc.open_by_key, USER_SHEET_ID)
 
     # --- Reset Contacts tab ---
     contacts_ws = spreadsheet.worksheet("Contacts")
@@ -178,14 +179,14 @@ def post_sms(validator, body_text, message_sid=None):
 
 def get_contacts(gc):
     """Read all contacts from the sheet."""
-    spreadsheet = _sheets_call_with_retry(gc.open_by_key, MASTER_SHEET_ID)
+    spreadsheet = _sheets_call_with_retry(gc.open_by_key, USER_SHEET_ID)
     contacts_ws = spreadsheet.worksheet("Contacts")
     return contacts_ws.get_all_records()
 
 
 def get_logs(gc):
     """Read all log entries from the sheet."""
-    spreadsheet = _sheets_call_with_retry(gc.open_by_key, MASTER_SHEET_ID)
+    spreadsheet = _sheets_call_with_retry(gc.open_by_key, USER_SHEET_ID)
     logs_ws = spreadsheet.worksheet("Logs")
     return logs_ws.get_all_records()
 
