@@ -79,14 +79,21 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
 
                 # Day-of reminder
                 if reminder_date == today:
-                    last_contact_str = contact.get("last_contact_date", "")
-                    last_contact_display = _format_date(last_contact_str)
                     msg = contact.get("last_interaction_message", "")
-                    msg_part = f" — {msg}" if msg else ""
-                    reminders.append(
-                        f"Today: Reach out to {contact['name']} "
-                        f"(last spoke on {last_contact_display}{msg_part})"
-                    )
+                    if msg:
+                        text = (
+                            f"Time to reach out to {contact['name']} today."
+                            f'\n\nLast you told me: "{msg}"'
+                        )
+                    else:
+                        last_contact_display = _format_date(
+                            contact.get("last_contact_date", "")
+                        )
+                        text = (
+                            f"Time to reach out to {contact['name']} today."
+                            f"\n\nLast spoke on {last_contact_display}."
+                        )
+                    reminders.append(text)
                     continue
 
                 # 1-week-before reminder
@@ -99,11 +106,12 @@ def handle_reminder_cron(authorization_header: str | None) -> tuple[str, int]:
                             ).date()
                             # Only send if reminder_date > last_contact_date + 7 days
                             if reminder_date > last_contact_date + timedelta(days=7):
+                                last_contact_display = _format_date(last_contact_str)
                                 msg = contact.get("last_interaction_message", "")
-                                msg_part = f" — {msg}" if msg else ""
+                                msg_part = f'\n\nLast you told me: "{msg}"' if msg else ""
                                 reminders.append(
-                                    f"Reminder: Reach out to {contact['name']} in 1 week "
-                                    f"(last spoke{msg_part})"
+                                    f"Heads up — your {contact['name']} follow-up is in one week "
+                                    f"(last spoke on {last_contact_display}).{msg_part}"
                                 )
                         except (ValueError, TypeError):
                             pass

@@ -125,10 +125,11 @@ class TestReminderDateLogic:
 
         body, status = handler.mod.handle_reminder_cron("Bearer valid")
         sms_body = handler.mock_send.call_args[0][1]
-        # Format: "Today: Reach out to Sarah Chen (last spoke on Jan 15, 2026 — discussed her startup)"
-        assert "Today" in sms_body
-        assert "Reach out to" in sms_body or "reach out to" in sms_body.lower()
-        assert "Jan" in sms_body or "2026-01-15" in sms_body  # last contact date present
+        # Format: "Time to reach out to Sarah Chen today. Last you told me: "discussed her startup""
+        assert "today" in sms_body.lower()
+        assert "reach out to" in sms_body.lower()
+        assert "Last you told me" in sms_body
+        assert "discussed her startup" in sms_body
 
     def test_one_week_before_reminder(self, handler):
         """Contact with reminder_date == today + 7, and no recent contact, gets 1-week-before reminder."""
@@ -176,9 +177,10 @@ class TestReminderDateLogic:
 
         body, status = handler.mod.handle_reminder_cron("Bearer valid")
         sms_body = handler.mock_send.call_args[0][1]
-        # Format: "Reminder: Reach out to Dad in 1 week (last spoke — called him about retirement)"
-        assert "Reminder" in sms_body or "1 week" in sms_body
-        assert "Reach out to" in sms_body or "reach out to" in sms_body.lower()
+        # Format: "Heads up — your Dad follow-up is in one week (last spoke on ...). Last you told me: "...""
+        assert "one week" in sms_body
+        assert "last spoke on" in sms_body.lower()
+        assert "Last you told me" in sms_body
 
     def test_no_one_week_reminder_for_recent_contact(self, handler):
         """Contact with reminder_date == today + 7 but recent interaction gets NO 1-week reminder."""
