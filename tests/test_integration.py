@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import gspread
+from gspread.exceptions import APIError
 import pytest
 import requests
 from twilio.request_validator import RequestValidator
@@ -34,6 +35,20 @@ SA_KEY_PATH = os.path.join(os.path.dirname(__file__), "..", "sa-key.json")
 
 # How long to wait after posting for processing
 PROCESSING_WAIT = 10
+
+
+def _sheets_call_with_retry(fn, *args, retries=5, **kwargs):
+    """Call a gspread function, retrying on 429 rate-limit errors with backoff."""
+    for attempt in range(retries):
+        try:
+            return fn(*args, **kwargs)
+        except APIError as e:
+            if e.response.status_code == 429 and attempt < retries - 1:
+                wait = 30 * (attempt + 1)
+                print(f"  Sheets 429 rate limit — retrying in {wait}s (attempt {attempt + 1}/{retries})")
+                time.sleep(wait)
+            else:
+                raise
 
 # Today's date for assertions
 TODAY_STR = datetime.now().strftime("%Y-%m-%d")
@@ -106,7 +121,7 @@ def validator():
 
 def reset_seed_data(gc):
     """Clear Contacts and Logs tabs, re-seed contacts with known data."""
-    spreadsheet = gc.open_by_key(MASTER_SHEET_ID)
+    spreadsheet = _sheets_call_with_retry(gc.open_by_key, MASTER_SHEET_ID)
 
     # --- Reset Contacts tab ---
     contacts_ws = spreadsheet.worksheet("Contacts")
@@ -155,14 +170,14 @@ def post_sms(validator, body_text, message_sid=None):
 
 def get_contacts(gc):
     """Read all contacts from the sheet."""
-    spreadsheet = gc.open_by_key(MASTER_SHEET_ID)
+    spreadsheet = _sheets_call_with_retry(gc.open_by_key, MASTER_SHEET_ID)
     contacts_ws = spreadsheet.worksheet("Contacts")
     return contacts_ws.get_all_records()
 
 
 def get_logs(gc):
     """Read all log entries from the sheet."""
-    spreadsheet = gc.open_by_key(MASTER_SHEET_ID)
+    spreadsheet = _sheets_call_with_retry(gc.open_by_key, MASTER_SHEET_ID)
     logs_ws = spreadsheet.worksheet("Logs")
     return logs_ws.get_all_records()
 
