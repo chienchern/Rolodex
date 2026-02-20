@@ -1,6 +1,10 @@
 """Flask app entry point — thin routing layer."""
 
+import logging
+
 from flask import Flask, request
+
+logging.basicConfig(level=logging.INFO)
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import reminder_handler
