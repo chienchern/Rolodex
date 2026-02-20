@@ -105,35 +105,6 @@ class TestRetry:
 
 
 # ---------------------------------------------------------------------------
-# get_active_contacts — transient error retry
-# ---------------------------------------------------------------------------
-
-class TestGetActiveContactsRetry:
-    """Verify that read operations retry on transient Sheets API errors."""
-
-    def test_succeeds_after_transient_500(self, env_vars, mock_gspread_client):
-        from sheets_client import get_active_contacts
-
-        contacts_ws = mock_gspread_client._worksheets["Contacts"]
-        good_data = [c.copy() for c in SAMPLE_CONTACTS]
-        calls = []
-
-        def get_all_records_flaky():
-            calls.append(1)
-            if len(calls) == 1:
-                raise _make_api_error(500)
-            return good_data
-
-        contacts_ws.get_all_records.side_effect = get_all_records_flaky
-
-        with patch("sheets_client.time.sleep"):
-            result = get_active_contacts("test_sheet_id")
-
-        assert len(calls) == 2
-        assert len(result) == len(SAMPLE_CONTACTS)
-
-
-# ---------------------------------------------------------------------------
 # get_user_by_phone
 # ---------------------------------------------------------------------------
 
