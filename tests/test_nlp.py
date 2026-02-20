@@ -102,8 +102,8 @@ class TestPromptConstruction:
         assert "interaction_date" in prompt_str
 
     @patch("nlp.genai_client")
-    def test_prompt_mentions_onboarding_intent(self, mock_client, env_vars):
-        """Bug 8: Prompt should list onboarding as a valid intent."""
+    def test_prompt_handles_new_contacts_via_log_interaction(self, mock_client, env_vars):
+        """New contacts should be handled via log_interaction with auto-add, not onboarding."""
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(SAMPLE_GEMINI_RESPONSE_LOG)
         )
@@ -114,7 +114,7 @@ class TestPromptConstruction:
 
         call_args = mock_client.models.generate_content.call_args
         prompt_str = str(call_args)
-        assert "onboarding" in prompt_str
+        assert "auto-add" in prompt_str
 
     @patch("nlp.genai_client")
     def test_prompt_includes_sms_text(self, mock_client, env_vars):
@@ -204,14 +204,14 @@ class TestResponseParsingHappyPath:
         assert result["interaction_date"] is None
 
     @patch("nlp.genai_client")
-    def test_onboarding_intent_parsed(self, mock_client, env_vars):
-        """Bug 8: onboarding intent should be a valid parsed intent."""
+    def test_onboarding_remapped_to_log_interaction(self, mock_client, env_vars):
+        """Onboarding intent from LLM is remapped to log_interaction (auto-add)."""
         response = {
             "context": {"reasoning": "No pending context.", "is_continuation": False, "pending_intent": None},
             "intent": {"reasoning": "Name not in contact list.", "value": "onboarding"},
             "contact": {"reasoning": "Priya not in list.", "name": "Priya", "match_type": "new"},
             "fields": {"reasoning": "No dates.", "interaction_date": None, "follow_up_date": None, "new_name": None},
-            "response": {"reasoning": "Ask to confirm.", "message": "I don't have 'Priya' in your Rolodex. Want me to add them?"},
+            "response": {"reasoning": "Confirming add.", "message": "Added Priya to your contacts and logged your dinner."},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
@@ -220,7 +220,9 @@ class TestResponseParsingHappyPath:
         from nlp import parse_sms
 
         result = parse_sms("Dinner with Priya", CONTACT_NAMES, None, CURRENT_DATE)
-        assert result["intent"] == "onboarding"
+        assert result["intent"] == "log_interaction"
+        assert result["contacts"][0]["name"] == "Priya"
+        assert "needs_clarification" not in result
 
     @patch("nlp.genai_client")
     def test_query_parsed(self, mock_client, env_vars):

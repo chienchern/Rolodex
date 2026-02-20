@@ -13,7 +13,6 @@ from config import TELEGRAM_SECRET_TOKEN
 from contact_actions import (
     execute_archive,
     execute_log_interaction,
-    execute_onboarding,
     execute_set_reminder,
     execute_update_contact,
 )
@@ -198,26 +197,10 @@ def handle_inbound_telegram(json_data: dict, secret_token_header: str | None) ->
                 "candidates": candidates,
             })
 
-        elif intent == "onboarding":
-            if needs_clarification:
-                candidates = [c["name"] for c in nlp_contacts]
-                context.store_context(chat_id, {
-                    "pending_intent": "onboarding",
-                    "original_message": text,
-                    "candidates": candidates,
-                })
-            else:
-                execute_onboarding(
-                    sheet_id, nlp_contacts, follow_up_date,
-                    today_str, default_reminder_days, text,
-                    interaction_date,
-                )
-                context.clear_context(chat_id)
-
         # ---------------------------------------------------------------
         # Step 10: Clear resolved context
         # ---------------------------------------------------------------
-        if pending_context and intent not in ("clarify", "archive", "onboarding"):
+        if pending_context and intent not in ("clarify", "archive"):
             context.clear_context(chat_id)
 
         # ---------------------------------------------------------------

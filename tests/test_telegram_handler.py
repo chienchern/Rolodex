@@ -45,11 +45,6 @@ def _nlp_response(intent, contacts=None, follow_up_date=None,
     elif intent in ("archive", "clarify"):
         result["needs_clarification"] = needs_clarification
         result["clarification_question"] = clarification_question
-    elif intent == "onboarding":
-        result["interaction_date"] = interaction_date
-        result["follow_up_date"] = follow_up_date
-        result["needs_clarification"] = needs_clarification
-        result["clarification_question"] = clarification_question
     result.update(extra)
     return result
 

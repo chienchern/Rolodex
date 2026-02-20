@@ -68,11 +68,6 @@ def _nlp_response(intent, contacts=None, follow_up_date=None,
     elif intent in ("archive", "clarify"):
         result["needs_clarification"] = needs_clarification
         result["clarification_question"] = clarification_question
-    elif intent == "onboarding":
-        result["interaction_date"] = interaction_date
-        result["follow_up_date"] = follow_up_date
-        result["needs_clarification"] = needs_clarification
-        result["clarification_question"] = clarification_question
     result.update(extra)
     return result
 
@@ -449,32 +444,25 @@ class TestClarify:
         assert "John" in sms_body
 
 
-class TestOnboarding:
-    """Bug 6: onboarding should log with intent='onboarding'."""
+class TestNewContactAutoAdd:
+    """New contacts are auto-added via log_interaction (no separate onboarding)."""
 
-    def test_onboarding_logs_with_correct_intent(self, handler):
-        handler.mock_nlp.parse_sms.return_value = {
-            **_nlp_response(
-                intent="onboarding",
-                contacts=[{"name": "Priya", "match_type": "new"}],
-                follow_up_date=None,
-                needs_clarification=False,
-                response_message="Added Priya to your rolodex.",
-            ),
-            "interaction_date": None,
-        }
-        handler.mock_context.get_context.return_value = {
-            "pending_intent": "onboarding",
-            "original_message": "Dinner with Priya",
-            "candidates": ["Priya"],
-        }
+    def test_new_contact_logs_via_log_interaction(self, handler):
+        handler.mock_nlp.parse_sms.return_value = _nlp_response(
+            intent="log_interaction",
+            contacts=[{"name": "Priya", "match_type": "new"}],
+            follow_up_date=None,
+            response_message="Added Priya to your contacts and logged your dinner.",
+            interaction_date=None,
+        )
 
-        form_data = {**SAMPLE_FORM_DATA, "Body": "YES", "MessageSid": "SM_confirm_onboard"}
+        form_data = {**SAMPLE_FORM_DATA, "Body": "Dinner with Priya", "MessageSid": "SM_new_contact"}
         handler.mod.handle_inbound_sms(form_data, REQUEST_URL, TWILIO_SIGNATURE)
 
         handler.mock_sheets.add_log_entry.assert_called_once()
         log_data = handler.mock_sheets.add_log_entry.call_args[0][1]
-        assert log_data["intent"] == "onboarding"
+        assert log_data["intent"] == "log_interaction"
+        assert log_data["contact_name"] == "Priya"
 
 
 class TestUnknown:

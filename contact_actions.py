@@ -67,7 +67,14 @@ def execute_set_reminder(sheet_id, nlp_contacts, follow_up_date,
             today = datetime.strptime(today_str, "%Y-%m-%d")
             reminder_date = (today + timedelta(days=default_reminder_days)).strftime("%Y-%m-%d")
 
-        sheets_client.update_contact(sheet_id, contact_name, {"reminder_date": reminder_date})
+        try:
+            sheets_client.update_contact(sheet_id, contact_name, {"reminder_date": reminder_date})
+        except ValueError:
+            sheets_client.add_contact(sheet_id, {
+                "name": contact_name,
+                "status": "active",
+                "reminder_date": reminder_date,
+            })
 
         sheets_client.add_log_entry(sheet_id, {
             "date": today_str,

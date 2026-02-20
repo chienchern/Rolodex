@@ -24,7 +24,7 @@ VALID_INTENTS = {
     "set_reminder",
     "update_contact",
     "archive",
-    "onboarding",
+    "onboarding",  # kept for backward compat; remapped to log_interaction
     "unknown",
 }
 
@@ -128,6 +128,10 @@ def _normalize_result(parsed):
     else:
         contacts = [{"name": contact_name, "match_type": match_type}]
 
+    # Remap onboarding → log_interaction (system auto-adds new contacts)
+    if intent == "onboarding":
+        intent = "log_interaction"
+
     # Override intent to "clarify" for ambiguous contacts (handler compat)
     if match_type == "ambiguous":
         intent = "clarify"
@@ -135,7 +139,7 @@ def _normalize_result(parsed):
     # Derive needs_clarification from match_type and intent
     needs_clarification = (
         match_type in ("none", "ambiguous")
-        or intent in ("archive", "onboarding")
+        or intent == "archive"
     )
 
     fields_obj = parsed.get("fields") if isinstance(parsed.get("fields"), dict) else {}
@@ -169,11 +173,6 @@ def _normalize_result(parsed):
     elif intent == "update_contact":
         result["new_name"] = fields_obj.get("new_name")
     elif intent in ("archive", "clarify"):
-        result["needs_clarification"] = needs_clarification
-        result["clarification_question"] = response_message
-    elif intent == "onboarding":
-        result["interaction_date"] = fields_obj.get("interaction_date")
-        result["follow_up_date"] = fields_obj.get("follow_up_date")
         result["needs_clarification"] = needs_clarification
         result["clarification_question"] = response_message
     # query and unknown: no extra fields

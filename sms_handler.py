@@ -13,7 +13,6 @@ from config import TWILIO_AUTH_TOKEN
 from contact_actions import (
     execute_archive,
     execute_log_interaction,
-    execute_onboarding,
     execute_set_reminder,
     execute_update_contact,
 )
@@ -174,26 +173,10 @@ def handle_inbound_sms(form_data: dict, request_url: str, twilio_signature: str)
                 "candidates": candidates,
             })
 
-        elif intent == "onboarding":
-            if needs_clarification:
-                candidates = [c["name"] for c in nlp_contacts]
-                context.store_context(from_phone, {
-                    "pending_intent": "onboarding",
-                    "original_message": body,
-                    "candidates": candidates,
-                })
-            else:
-                execute_onboarding(
-                    sheet_id, nlp_contacts, follow_up_date,
-                    today_str, default_reminder_days, body,
-                    interaction_date,
-                )
-                context.clear_context(from_phone)
-
         # ---------------------------------------------------------------
         # Step 9: Clear resolved context
         # ---------------------------------------------------------------
-        if pending_context and intent not in ("clarify", "archive", "onboarding"):
+        if pending_context and intent not in ("clarify", "archive"):
             context.clear_context(from_phone)
 
         # ---------------------------------------------------------------
