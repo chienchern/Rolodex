@@ -1,4 +1,4 @@
-# Rolodex
+# Rolodex (MVP)
 
 A personal CRM you text. Log interactions, query contact history, and get automatic follow-up reminders — all via Telegram, with Google Sheets as the data layer.
 
