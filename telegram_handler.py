@@ -1,5 +1,6 @@
 """Telegram webhook handler — inbound Telegram message orchestration."""
 
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -112,6 +113,7 @@ def handle_inbound_telegram(json_data: dict, secret_token_header: str | None) ->
         # Step 7: Call Gemini NLP
         # ---------------------------------------------------------------
         nlp_result = nlp.parse_sms(text, contact_names, pending_context, current_date_str, contacts, recent_logs)
+        logger.info("NLP reasoning: %s", json.dumps(nlp_result.get("reasoning", {}), indent=2))
 
         intent = nlp_result.get("intent", "unknown")
         nlp_contacts = nlp_result.get("contacts", [])

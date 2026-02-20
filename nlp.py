@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 from google.genai import types
 
 from config import GEMINI_API_KEY
-from prompts import CONTEXT_TEMPLATE, SYSTEM_PROMPT
+from prompts import SYSTEM_PROMPT
 
 # --- Gemini client (module-level for mocking) ---
 
 genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# --- Valid intents ---
+# --- Valid intents (matches new prompt schema; "clarify" derived internally) ---
 
 VALID_INTENTS = {
     "log_interaction",
@@ -25,7 +25,6 @@ VALID_INTENTS = {
     "update_contact",
     "archive",
     "onboarding",
-    "clarify",
     "unknown",
 }
 
@@ -48,14 +47,7 @@ def _build_prompt(sms_text, contact_names, pending_context, current_date_str, co
     else:
         contact_list = "\n".join(f"- {name}" for name in contact_names) if contact_names else "- (no contacts yet)"
 
-    if pending_context:
-        context_section = CONTEXT_TEMPLATE.format(
-            original_message=pending_context.get("original_message", ""),
-            pending_intent=pending_context.get("pending_intent", ""),
-            candidates=", ".join(pending_context.get("candidates", [])),
-        )
-    else:
-        context_section = "No pending conversation context."
+    context_section = json.dumps(pending_context) if pending_context else "null"
 
     if recent_logs:
         log_lines = []
@@ -117,38 +109,73 @@ def _make_fallback_response(message=None):
 
 
 def _normalize_result(parsed):
-    """Normalize and validate the parsed result, including only intent-relevant fields."""
-    intent = parsed.get("intent")
+    """Normalize and validate the parsed result from the new nested schema."""
+    # Read intent from nested schema; fall back gracefully for old-format responses
+    intent_obj = parsed.get("intent") if isinstance(parsed.get("intent"), dict) else {}
+    intent = intent_obj.get("value", "unknown")
     if intent not in VALID_INTENTS:
         intent = "unknown"
 
-    contacts = parsed.get("contacts", [])
-    if not isinstance(contacts, list):
+    contact_obj = parsed.get("contact") if isinstance(parsed.get("contact"), dict) else {}
+    match_type = contact_obj.get("match_type", "none")
+    contact_name = contact_obj.get("name")
+
+    # Build contacts list from name (null, string, or array of canonical names)
+    if contact_name is None:
         contacts = []
+    elif isinstance(contact_name, list):
+        contacts = [{"name": n, "match_type": match_type} for n in contact_name if n]
+    else:
+        contacts = [{"name": contact_name, "match_type": match_type}]
+
+    # Override intent to "clarify" for ambiguous contacts (handler compat)
+    if match_type == "ambiguous":
+        intent = "clarify"
+
+    # Derive needs_clarification from match_type and intent
+    needs_clarification = (
+        match_type in ("none", "ambiguous")
+        or intent in ("archive", "onboarding")
+    )
+
+    fields_obj = parsed.get("fields") if isinstance(parsed.get("fields"), dict) else {}
+    response_obj = parsed.get("response") if isinstance(parsed.get("response"), dict) else {}
+    response_message = response_obj.get("message")
+
+    # Collect per-step reasoning for logging
+    context_obj = parsed.get("context") if isinstance(parsed.get("context"), dict) else {}
+    reasoning = {
+        "context": context_obj.get("reasoning"),
+        "intent": intent_obj.get("reasoning"),
+        "contact": contact_obj.get("reasoning"),
+        "fields": fields_obj.get("reasoning"),
+        "response": response_obj.get("reasoning"),
+    }
 
     # Common fields for all intents
     result = {
         "intent": intent,
         "contacts": contacts,
-        "response_message": parsed.get("response_message"),
+        "response_message": response_message,
+        "reasoning": reasoning,
     }
 
     # Intent-specific fields
     if intent == "log_interaction":
-        result["interaction_date"] = parsed.get("interaction_date")
-        result["follow_up_date"] = parsed.get("follow_up_date")
+        result["interaction_date"] = fields_obj.get("interaction_date")
+        result["follow_up_date"] = fields_obj.get("follow_up_date")
     elif intent == "set_reminder":
-        result["follow_up_date"] = parsed.get("follow_up_date")
+        result["follow_up_date"] = fields_obj.get("follow_up_date")
     elif intent == "update_contact":
-        result["new_name"] = parsed.get("new_name")
+        result["new_name"] = fields_obj.get("new_name")
     elif intent in ("archive", "clarify"):
-        result["needs_clarification"] = parsed.get("needs_clarification", False)
-        result["clarification_question"] = parsed.get("clarification_question")
+        result["needs_clarification"] = needs_clarification
+        result["clarification_question"] = response_message
     elif intent == "onboarding":
-        result["interaction_date"] = parsed.get("interaction_date")
-        result["follow_up_date"] = parsed.get("follow_up_date")
-        result["needs_clarification"] = parsed.get("needs_clarification", False)
-        result["clarification_question"] = parsed.get("clarification_question")
+        result["interaction_date"] = fields_obj.get("interaction_date")
+        result["follow_up_date"] = fields_obj.get("follow_up_date")
+        result["needs_clarification"] = needs_clarification
+        result["clarification_question"] = response_message
     # query and unknown: no extra fields
 
     return result
@@ -183,13 +210,14 @@ def parse_sms(sms_text, contact_names, pending_context, current_date_str, contac
 
     prompt = _build_prompt(sms_text, contact_names, pending_context, current_date_str, contacts_data, recent_logs)
 
-    # Call Gemini with structured JSON output
+    # Call Gemini with structured JSON output at temperature=0 for determinism
     try:
         response = genai_client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
+                temperature=0,
             ),
         )
         raw_text = response.text

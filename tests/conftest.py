@@ -228,28 +228,84 @@ def mock_send_message():
 # --- Mock Gemini (google.genai) ---
 
 SAMPLE_GEMINI_RESPONSE_LOG = {
-    "intent": "log_interaction",
-    "contacts": [{"name": "Sarah Chen", "match_type": "fuzzy"}],
-    "interaction_date": None,
-    "follow_up_date": "2026-02-24",
-    "response_message": "Updated Sarah Chen. I'll remind you to reach out on Tuesday, Feb 24, 2026.",
+    "context": {
+        "reasoning": "No pending context.",
+        "is_continuation": False,
+        "pending_intent": None,
+    },
+    "intent": {
+        "reasoning": "User says 'Had coffee with Sarah' — logging an interaction.",
+        "value": "log_interaction",
+    },
+    "contact": {
+        "reasoning": "Sarah Chen is in the contact list.",
+        "name": "Sarah Chen",
+        "match_type": "fuzzy",
+    },
+    "fields": {
+        "reasoning": "No date mentioned, defaulting to None. Follow-up in 2 weeks.",
+        "interaction_date": None,
+        "follow_up_date": "2026-02-24",
+        "new_name": None,
+    },
+    "response": {
+        "reasoning": "Confirming the log and reminder.",
+        "message": "Updated Sarah Chen. I'll remind you to reach out on Tuesday, Feb 24, 2026.",
+    },
 }
 
 SAMPLE_GEMINI_RESPONSE_QUERY = {
-    "intent": "query",
-    "contacts": [{"name": "Mike Torres", "match_type": "exact"}],
-    "response_message": "You last talked to Mike Torres on Feb 3, 2026. Notes: lunch, new job at Google.",
+    "context": {
+        "reasoning": "No pending context.",
+        "is_continuation": False,
+        "pending_intent": None,
+    },
+    "intent": {
+        "reasoning": "User asking about last contact with Mike.",
+        "value": "query",
+    },
+    "contact": {
+        "reasoning": "Mike Torres is in the contact list.",
+        "name": "Mike Torres",
+        "match_type": "exact",
+    },
+    "fields": {
+        "reasoning": "No dates needed for a query.",
+        "interaction_date": None,
+        "follow_up_date": None,
+        "new_name": None,
+    },
+    "response": {
+        "reasoning": "Summarizing Mike's contact info.",
+        "message": "You last talked to Mike Torres on Feb 3, 2026. Notes: lunch, new job at Google.",
+    },
 }
 
 SAMPLE_GEMINI_RESPONSE_CLARIFY = {
-    "intent": "clarify",
-    "contacts": [
-        {"name": "John Smith", "match_type": "ambiguous"},
-        {"name": "John Doe", "match_type": "ambiguous"},
-    ],
-    "needs_clarification": True,
-    "clarification_question": "Which John did you mean? John Smith or John Doe?",
-    "response_message": "Which John did you mean? John Smith or John Doe?",
+    "context": {
+        "reasoning": "No pending context.",
+        "is_continuation": False,
+        "pending_intent": None,
+    },
+    "intent": {
+        "reasoning": "User wants to log an interaction but contact is ambiguous.",
+        "value": "log_interaction",
+    },
+    "contact": {
+        "reasoning": "Both John Smith and John Doe match 'John'.",
+        "name": ["John Smith", "John Doe"],
+        "match_type": "ambiguous",
+    },
+    "fields": {
+        "reasoning": "Ambiguous contact, skipping fields.",
+        "interaction_date": None,
+        "follow_up_date": None,
+        "new_name": None,
+    },
+    "response": {
+        "reasoning": "Asking user to disambiguate.",
+        "message": "Which John did you mean? John Smith or John Doe?",
+    },
 }
 
 

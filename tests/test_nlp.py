@@ -179,10 +179,9 @@ class TestResponseParsingHappyPath:
     @patch("nlp.genai_client")
     def test_interaction_date_parsed(self, mock_client, env_vars):
         """Bug 7/9: interaction_date should be extracted from NLP response."""
-        response = {
-            **SAMPLE_GEMINI_RESPONSE_LOG,
-            "interaction_date": "2026-02-13",
-        }
+        import copy
+        response = copy.deepcopy(SAMPLE_GEMINI_RESPONSE_LOG)
+        response["fields"]["interaction_date"] = "2026-02-13"
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
         )
@@ -208,11 +207,11 @@ class TestResponseParsingHappyPath:
     def test_onboarding_intent_parsed(self, mock_client, env_vars):
         """Bug 8: onboarding intent should be a valid parsed intent."""
         response = {
-            "intent": "onboarding",
-            "contacts": [{"name": "Priya", "match_type": "new"}],
-            "needs_clarification": True,
-            "clarification_question": "I don't have 'Priya' in your Rolodex. Want me to add them?",
-            "response_message": "I don't have 'Priya' in your Rolodex. Want me to add them?",
+            "context": {"reasoning": "No pending context.", "is_continuation": False, "pending_intent": None},
+            "intent": {"reasoning": "Name not in contact list.", "value": "onboarding"},
+            "contact": {"reasoning": "Priya not in list.", "name": "Priya", "match_type": "new"},
+            "fields": {"reasoning": "No dates.", "interaction_date": None, "follow_up_date": None, "new_name": None},
+            "response": {"reasoning": "Ask to confirm.", "message": "I don't have 'Priya' in your Rolodex. Want me to add them?"},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
@@ -254,10 +253,11 @@ class TestResponseParsingHappyPath:
     @patch("nlp.genai_client")
     def test_set_reminder_parsed(self, mock_client, env_vars):
         response = {
-            "intent": "set_reminder",
-            "contacts": [{"name": "Dad", "match_type": "exact"}],
-            "follow_up_date": "2026-03-05",
-            "response_message": "Reminder set for Dad on March 5.",
+            "context": {"reasoning": "No pending context.", "is_continuation": False, "pending_intent": None},
+            "intent": {"reasoning": "User wants a reminder.", "value": "set_reminder"},
+            "contact": {"reasoning": "Dad is in the list.", "name": "Dad", "match_type": "exact"},
+            "fields": {"reasoning": "Date specified.", "interaction_date": None, "follow_up_date": "2026-03-05", "new_name": None},
+            "response": {"reasoning": "Confirming reminder.", "message": "Reminder set for Dad on March 5."},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
@@ -272,11 +272,11 @@ class TestResponseParsingHappyPath:
     @patch("nlp.genai_client")
     def test_archive_parsed(self, mock_client, env_vars):
         response = {
-            "intent": "archive",
-            "contacts": [{"name": "Sarah Chen", "match_type": "exact"}],
-            "needs_clarification": True,
-            "clarification_question": "Are you sure you want to archive Sarah Chen?",
-            "response_message": "Are you sure you want to archive Sarah Chen? Reply YES to confirm.",
+            "context": {"reasoning": "No pending context.", "is_continuation": False, "pending_intent": None},
+            "intent": {"reasoning": "User wants to archive Sarah.", "value": "archive"},
+            "contact": {"reasoning": "Sarah Chen is in the list.", "name": "Sarah Chen", "match_type": "exact"},
+            "fields": {"reasoning": "No dates needed.", "interaction_date": None, "follow_up_date": None, "new_name": None},
+            "response": {"reasoning": "Ask for confirmation.", "message": "Are you sure you want to archive Sarah Chen? Reply YES to confirm."},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
@@ -290,9 +290,11 @@ class TestResponseParsingHappyPath:
     @patch("nlp.genai_client")
     def test_unknown_intent_parsed(self, mock_client, env_vars):
         response = {
-            "intent": "unknown",
-            "contacts": [],
-            "response_message": "I'm not sure what you mean. Try something like 'Had coffee with Sarah'.",
+            "context": {"reasoning": "No pending context.", "is_continuation": False, "pending_intent": None},
+            "intent": {"reasoning": "Message doesn't match any intent.", "value": "unknown"},
+            "contact": {"reasoning": "No contact relevant.", "name": None, "match_type": "none"},
+            "fields": {"reasoning": "No fields needed.", "interaction_date": None, "follow_up_date": None, "new_name": None},
+            "response": {"reasoning": "Generic unknown reply.", "message": "I'm not sure what you mean. Try something like 'Had coffee with Sarah'."},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
@@ -360,9 +362,11 @@ class TestFallbackParsing:
     @patch("nlp.genai_client")
     def test_missing_optional_fields_default_to_none(self, mock_client, env_vars):
         minimal = {
-            "intent": "log_interaction",
-            "contacts": [{"name": "Sarah Chen", "match_type": "exact"}],
-            "response_message": "Updated Sarah Chen.",
+            "context": {"reasoning": "No context.", "is_continuation": False, "pending_intent": None},
+            "intent": {"reasoning": "Logging interaction.", "value": "log_interaction"},
+            "contact": {"reasoning": "Sarah Chen matched.", "name": "Sarah Chen", "match_type": "exact"},
+            "fields": {"reasoning": "No follow-up date.", "interaction_date": None, "follow_up_date": None, "new_name": None},
+            "response": {"reasoning": "Simple confirm.", "message": "Updated Sarah Chen."},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(minimal)
@@ -431,9 +435,11 @@ class TestFieldValidation:
     @patch("nlp.genai_client")
     def test_unknown_intent_value_handled(self, mock_client, env_vars):
         response = {
-            "intent": "completely_new_intent",
-            "contacts": [],
-            "response_message": "Something unexpected.",
+            "context": {"reasoning": "No context.", "is_continuation": False, "pending_intent": None},
+            "intent": {"reasoning": "Unrecognized intent.", "value": "completely_new_intent"},
+            "contact": {"reasoning": "No contact.", "name": None, "match_type": "none"},
+            "fields": {"reasoning": "No fields.", "interaction_date": None, "follow_up_date": None, "new_name": None},
+            "response": {"reasoning": "Fallback.", "message": "Something unexpected."},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
@@ -448,9 +454,11 @@ class TestFieldValidation:
     @patch("nlp.genai_client")
     def test_null_contact_name_handled(self, mock_client, env_vars):
         response = {
-            "intent": "log_interaction",
-            "contacts": [{"name": None, "match_type": "new"}],
-            "response_message": "Updated.",
+            "context": {"reasoning": "No context.", "is_continuation": False, "pending_intent": None},
+            "intent": {"reasoning": "Logging interaction.", "value": "log_interaction"},
+            "contact": {"reasoning": "No name given.", "name": None, "match_type": "new"},
+            "fields": {"reasoning": "No fields.", "interaction_date": None, "follow_up_date": None, "new_name": None},
+            "response": {"reasoning": "Confirm.", "message": "Updated."},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
@@ -465,10 +473,11 @@ class TestFieldValidation:
     @patch("nlp.genai_client")
     def test_malformed_date_string_handled(self, mock_client, env_vars):
         response = {
-            "intent": "set_reminder",
-            "contacts": [{"name": "Dad", "match_type": "exact"}],
-            "follow_up_date": "not-a-real-date",
-            "response_message": "Reminder set for Dad.",
+            "context": {"reasoning": "No context.", "is_continuation": False, "pending_intent": None},
+            "intent": {"reasoning": "Setting reminder.", "value": "set_reminder"},
+            "contact": {"reasoning": "Dad is in the list.", "name": "Dad", "match_type": "exact"},
+            "fields": {"reasoning": "Malformed date.", "interaction_date": None, "follow_up_date": "not-a-real-date", "new_name": None},
+            "response": {"reasoning": "Confirm.", "message": "Reminder set for Dad."},
         }
         mock_client.models.generate_content.return_value = _mock_genai_response(
             json.dumps(response)
