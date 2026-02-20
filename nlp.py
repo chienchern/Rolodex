@@ -220,6 +220,7 @@ def parse_sms(sms_text, contact_names, pending_context, current_date_str, contac
             ),
         )
         raw_text = response.text
+        logger.info("Gemini raw response: %s", raw_text)
     except Exception:
         logger.exception("Gemini API call failed")
         return _make_fallback_response()
