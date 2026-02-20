@@ -30,6 +30,110 @@ def reset_sheets_client_cache(env_vars):
 
 
 # ---------------------------------------------------------------------------
+# _retry
+# ---------------------------------------------------------------------------
+
+def _make_api_error(status_code):
+    """Create a gspread APIError with the given HTTP status code."""
+    from gspread.exceptions import APIError
+    response = MagicMock()
+    response.status_code = status_code
+    return APIError(response)
+
+
+class TestRetry:
+    """Tests for the _retry helper."""
+
+    def test_retries_on_429(self):
+        from sheets_client import _retry
+        calls = []
+        def fn():
+            calls.append(1)
+            if len(calls) < 2:
+                raise _make_api_error(429)
+            return "ok"
+        with patch("sheets_client.time.sleep"):
+            assert _retry(fn) == "ok"
+        assert len(calls) == 2
+
+    def test_retries_on_500(self):
+        from sheets_client import _retry
+        calls = []
+        def fn():
+            calls.append(1)
+            if len(calls) < 2:
+                raise _make_api_error(500)
+            return "ok"
+        with patch("sheets_client.time.sleep"):
+            assert _retry(fn) == "ok"
+        assert len(calls) == 2
+
+    def test_retries_on_503(self):
+        from sheets_client import _retry
+        calls = []
+        def fn():
+            calls.append(1)
+            if len(calls) < 2:
+                raise _make_api_error(503)
+            return "ok"
+        with patch("sheets_client.time.sleep"):
+            assert _retry(fn) == "ok"
+        assert len(calls) == 2
+
+    def test_raises_immediately_on_non_retriable_error(self):
+        from sheets_client import _retry
+        from gspread.exceptions import APIError
+        calls = []
+        def fn():
+            calls.append(1)
+            raise _make_api_error(403)
+        with pytest.raises(APIError):
+            _retry(fn)
+        assert len(calls) == 1
+
+    def test_raises_after_max_retries_exhausted(self):
+        from sheets_client import _retry
+        from gspread.exceptions import APIError
+        calls = []
+        def fn():
+            calls.append(1)
+            raise _make_api_error(500)
+        with patch("sheets_client.time.sleep"):
+            with pytest.raises(APIError):
+                _retry(fn, retries=3)
+        assert len(calls) == 3
+
+
+# ---------------------------------------------------------------------------
+# get_active_contacts — transient error retry
+# ---------------------------------------------------------------------------
+
+class TestGetActiveContactsRetry:
+    """Verify that read operations retry on transient Sheets API errors."""
+
+    def test_succeeds_after_transient_500(self, env_vars, mock_gspread_client):
+        from sheets_client import get_active_contacts
+
+        contacts_ws = mock_gspread_client._worksheets["Contacts"]
+        good_data = [c.copy() for c in SAMPLE_CONTACTS]
+        calls = []
+
+        def get_all_records_flaky():
+            calls.append(1)
+            if len(calls) == 1:
+                raise _make_api_error(500)
+            return good_data
+
+        contacts_ws.get_all_records.side_effect = get_all_records_flaky
+
+        with patch("sheets_client.time.sleep"):
+            result = get_active_contacts("test_sheet_id")
+
+        assert len(calls) == 2
+        assert len(result) == len(SAMPLE_CONTACTS)
+
+
+# ---------------------------------------------------------------------------
 # get_user_by_phone
 # ---------------------------------------------------------------------------
 
